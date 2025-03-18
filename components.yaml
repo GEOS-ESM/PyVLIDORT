@@ -1,0 +1,16 @@
+env:
+  local: ./env@
+  remote: ../ESMA_env.git
+  tag: v5.9.0
+  develop: main
+
+cmake:
+  local: ./cmake@
+  remote: ../ESMA_cmake.git
+  tag: v4.13.0
+  develop: develop
+
+ecbuild:
+  local: ./cmake@/ecbuild@
+  remote: ../ecbuild.git
+  tag: geos/v1.4.0
