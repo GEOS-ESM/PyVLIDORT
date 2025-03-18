@@ -15,3 +15,22 @@ install*
 
 # If you build with spack libraries, you can get spack log files
 spack*.log
+
+*.hdf
+*.h5
+*.nc
+*.nc4
+*.npz
+/cmake/
+/@cmake/
+/cmake@/
+/env/
+/@env/
+/env@/
+/BUILD/
+/build*/
+/install*/
+/.mepo/
+__pycache__/
+.ipynb_checkpoints/
+parallel_build.o*
