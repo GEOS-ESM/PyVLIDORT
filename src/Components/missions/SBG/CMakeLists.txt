@@ -16,15 +16,15 @@ install (
     )
 
 # these are non-executaables
-set (RCFILES
-    sbg.pcf
-    ssd650.pcf
-    imager_files.pcf
-    imager_sampler.pcf
-    )
+#set (RCFILES
+#    sbg.pcf
+#    ssd650.pcf
+#    imager_files.pcf
+#    imager_sampler.pcf
+#    )
 
-install (
-    FILES ${RCFILES}
-    DESTINATION bin/missions/${this}
-    )
+#install (
+#    FILES ${RCFILES}
+#    DESTINATION bin/missions/${this}
+#    )
 
