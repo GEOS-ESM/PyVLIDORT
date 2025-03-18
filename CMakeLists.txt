@@ -11,7 +11,7 @@ cmake_policy (SET CMP0054 NEW)
 
 project (
   pyVLIDORT
-  VERSION 1.1.0
+  VERSION 1.0.0
   LANGUAGES Fortran CXX C)  # Note - CXX is required for ESMF
 
 # Enforce out of source directory builds
@@ -47,7 +47,6 @@ if (NOT CMAKE_BUILD_TYPE)
   
     include (esma)
 
-    set (PYOBS_STANDALONE TRUE)
   endif ()
    ecbuild_declare_project()
 
@@ -75,3 +74,6 @@ if (NOT CMAKE_BUILD_TYPE)
      FILES        ${PROJECT_BINARY_DIR}/.gitignore
      DESTINATION  ${CMAKE_INSTALL_PREFIX}
    )
+
+# Adds ability to tar source
+include(esma_cpack)
