@@ -6,11 +6,11 @@ find_package(F2PY3 REQUIRED)
 add_f2py3_module (VLIDORT_POLAR_
   SOURCES VLIDORT_POLAR_py.F90
   DESTINATION lib/Python/${this}
-  LIBRARIES geo_vlidort ${VLIDORT_LIBRARY}
-  INCLUDEDIRS ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_BINARY_DIR}/lib ${include_${this}} ${esma_include}/geo_vlidort ${esma_include}/${VLIDORT_LIBRARY}
+  LIBRARIES drivers ${VLIDORT_LIBRARY}
+  INCLUDEDIRS ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_BINARY_DIR}/lib ${include_${this}} ${esma_include}/drivers ${esma_include}/${VLIDORT_LIBRARY}
   )
-add_dependencies(VLIDORT_POLAR_ geo_vlidort ${VLIDORT_LIBRARY})
+add_dependencies(VLIDORT_POLAR_ drivers ${VLIDORT_LIBRARY})
 
-file (GLOB python_files CONFIGURE_DEPENDS py_leo_vlidort/*.py)
-install (FILES ${python_files} DESTINATION lib/Python/py_leo_vlidort)
+file (GLOB python_files CONFIGURE_DEPENDS py_vlidort/*.py)
+install (FILES ${python_files} DESTINATION lib/Python/py_vlidort)
 
