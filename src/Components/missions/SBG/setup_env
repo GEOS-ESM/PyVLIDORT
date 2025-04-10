@@ -14,7 +14,7 @@ set PATH = ${AERODIR}/install/bin/:$PATH
 
 # Set Python PATH
 #-----------------
-setenv PYTHONPATH ${AERODIR}/install/lib/Python:$PYTHONPATH
+setenv PYTHONPATH ${AERODIR}/install/lib/Python
 
 # source AeroApps modules
 source ${AERODIR}/env@/g5_modules
