@@ -54,10 +54,13 @@ class INPUTS_VLIDORT(G2GAOP):
         """
         aop = self.getAOPrt(wavelength=wavelength,vector=True)
 
-        # need to reshape these to [nlev,nobs]
+        # need to reshape these to [nlev,nch,nobs]
+        if isinstance(wavelength,float):
+            aop = aop.expand_dims(dim={"ch": 1},axis=1)
+
         self.tau = aop.AOT.astype('float64').transpose().to_numpy()
         self.ssa = aop.SSA.astype('float64').transpose().to_numpy()
-        self.pmom = aop.PMOM.astype('float64').transpose('lev','nobs','m','p').to_numpy()
+        self.pmom = aop.PMOM.astype('float64').transpose('lev','ch','nobs','m','p').to_numpy()
 
 
     #---
