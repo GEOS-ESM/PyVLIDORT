@@ -16,7 +16,6 @@ import os
 import argparse
 from   datetime        import datetime, timedelta
 from   dateutil.parser import parse         as isoparser
-from   MAPL.config     import Config
 import numpy   as np
 import xarray  as xr
 import yaml
@@ -536,14 +535,8 @@ if __name__ == "__main__":
     parser.add_argument("iso_t2",
                         help="ending iso time")
 
-    parser.add_argument("track_pcf",
-                        help="prep config file with track input file names")
-
-    parser.add_argument("orbit_pcf",
-                        help="prep config file with orbit variables")
-
-    parser.add_argument("inst_pcf",
-                        help="prep config file with instrument variables")
+    parser.add_argument("inputs_yaml",
+                        help="yaml file with input configuration file names")
 
     parser.add_argument("-a","--albedotype", default=albedoType,
                         help="albedo type keyword. default is to figure out according to channel")
@@ -569,21 +562,26 @@ if __name__ == "__main__":
     if albedoType is None:
         albedoType = 'AMES_BRDF'
 
+
+    configs = yaml.safe_load(open(args.inputs_yaml))
+    args.paths_yaml = config['paths_yaml']
+    args.inst_yaml  = config['inst_yaml']
+    args.orbit_yaml = config['orbit_yaml']
     # Parse prep config
     # -----------------
-    cf             = Config(args.inst_pcf,delim=' = ')
-    instname       = cf('instname')
+    cf             = yaml.safe_load(open(args.inst_yaml))
+    instname       = cf['instname']
 
-    cf             = Config(args.orbit_pcf,delim=' = ')
-    orbitname      = cf('orbitname')
+    cf             = yaml.safe_load(open(args.orbit_yaml))
+    orbitname      = cf['orbitname']
     ORBITNAME      = orbitname.upper()
 
-    cf             = Config(args.track_pcf,delim=' = ')
-    inTemplate     = cf('inDir')     + '/' + cf('inFile')
-    outTemplate    = cf('outDir')    + '/' + cf('outFile')
+    cf             = yaml.safe_load(open(args.paths_yaml))
+    inTemplate     = cf['inDir']     + '/' + cf['inFile']
+    outTemplate    = cf['outDir']    + '/' + cf['outFile']
 
     try:
-        brdfTemplate = cf('brdfDir') + '/' + cf('brdfFile')
+        brdfTemplate = cf['brdfDir'] + '/' + cf['brdfFile']
     except:
         brdfTemplate = None
 
@@ -623,12 +621,12 @@ if __name__ == "__main__":
         print('>>>verbose:   ',args.verbose)
         print('++++End of arguments+++')
         
-        vlidort = ACCP_POLAR_VLIDORT(inFile,outFile,rcFile,
-                            albedoType, 
-                            instname,
-                            args.dryrun,
-                            brdfFile=brdfFile,
-                            verbose=args.verbose)
+#        vlidort = ACCP_POLAR_VLIDORT(inFile,outFile,rcFile,
+#                            albedoType, 
+#                            instname,
+#                            args.dryrun,
+#                            brdfFile=brdfFile,
+#                            verbose=args.verbose)
 
 
         date += Dt
