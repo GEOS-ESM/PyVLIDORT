@@ -17,19 +17,13 @@ import argparse
 from   datetime        import datetime, timedelta
 from   dateutil.parser import parse         as isoparser
 from   MAPL.config     import Config
-from   netCDF4 import Dataset
 import numpy   as np
 import xarray  as xr
-from pyobs import mietable as mt
-from pyobs.aop import G2GAOP
 import yaml
-from pyobs.constants import MAPL_GRAV as GRAV
-from pyobs.constants import MAPL_RDRY as RGAS
-from pyobs.constants import MAPL_KAPPA as KAPPA
+from inputs_vlidort import INPUTS_VLIDORT
 
 
-from py_leo_vlidort.vlidort import VLIDORT, get_chd, WrapperFuncs, MODIS_BRDF_run
-from py_leo_vlidort.copyvar  import _copyVar
+from py_leo_vlidort.vlidort import VLIDORT, MODIS_BRDF_run
 from multiprocessing import Pool
 
 # Generic Lists of Varnames and Units
@@ -55,16 +49,33 @@ ncALIAS = {'LONGITUDE': 'longitude',
 MISSING = np.float32(-1.e+20)
 
 
-class ACCP_POLAR_VLIDORT(VLIDORT,G2GAOP):
+class SBG_VLIDORT(VLIDORT,INPUTS_VLIDORT):
     """
     Everything needed for calling VLIDORT
     GEOS-5 has already been sampled on satellite track
+
+    Reads in an SBG granule
+    Gets VLIDORT inputs
+    Runs VLIDORT
+
+    inFile        : string template for inputs
+    outFile       : where to write vlidort outputs
+    mtFile        : aerosol optics tables
+    albedoType    : what kind of surface albedo model to use
+    instname      : instrument name
+    dryrun        : set everything up but don't calculate AOPs or run VLIDORT
+    do_vlidort    : calculate AOPs but don't run VLIDORT
+    nstreams      : number of vlidort streams
+    plane_parallel: use plane_parallel assumption in vlidort
+    brdfFile      : string template for file with brdf parameters
+    verbose       : write debugging outputs
     """
-    def __init__(self,inFile,outFile,rcFile,albedoType,
+    def __init__(self,inFile,outFile,mtFile,albedoType,
                 instname,dryrun,
                 nstreams=12,
                 plane_parallel=True,
                 brdfFile=None,
+                do_vlidort=True,
                 verbose=False):
         self.SDS_AER     = SDS_AER
         self.SDS_MET     = SDS_MET
@@ -74,7 +85,7 @@ class ACCP_POLAR_VLIDORT(VLIDORT,G2GAOP):
         self.inFile      = inFile
         self.outFile     = outFile
         self.albedoType  = albedoType
-        self.rcFile      = rcFile
+        self.mtFile      = mtFile
         self.verbose     = verbose
         self.brdfFile    = brdfFile
         self.nstreams    = nstreams
@@ -83,6 +94,9 @@ class ACCP_POLAR_VLIDORT(VLIDORT,G2GAOP):
 
 
         # load optics tables
+        # get:
+        # p = number of phase function elements
+        # m = number of phase function expansion moments
         self.getMie()
 
         # get granule dimensions
@@ -104,86 +118,41 @@ class ACCP_POLAR_VLIDORT(VLIDORT,G2GAOP):
                 self.readSampledGEOS(ityme)
 
                 # Read in surface data
+                # This defines the channels
                 self.readSampledAMESBRDF(ityme)
 
-                # Calculate atmospheric profile properties needed for Rayleigh calc
-                self.getEdgeVars()    
-
-                # Read in precalculated Scene Geometry
-                # limit iGood to sza < 80
-                self.readAngles(ityme)
+                # Calculate P,T atmospheric profile properties needed for Rayleigh calc
+                self.getEdgeVars()   
 
                 # Land-Sea Mask
                 # limit iGood to land pixels
                 self.LandSeaMask(ityme)       
 
+                # Get pool of processors
+                if do_vlidort:
+                    p = Pool(120)
 
                 if not dryrun:
-                    # Run VLIDORT
-                    self.runVLIDORT()
-                    self.writeNC(ityme) 
-    #---
-    def getEdgeVars(self):
-        """
-        Get altitude, pressure, and temperature and edge of layers
-        """
+                    # Loop through channels
+                    for ich,wavelength in enumerate(self.channels):
+                        # Get Rayleigh optical depth profile
+                        self.getROT(wavelength)
 
-        # Get layer thicnkness from DELP & AIRDENS
-        # DELP: Pa = kg m-1 s-2
-        # AIRDENS: kg m-3
-        # GRAV: m s-2
-        # -----------------------------------------
-        rhodz = self.aer['DELP'] / GRAV
-        dz = rhodz / self.aer['AIRDENS']       # column thickness in m
+                        # Get Aerosol Optical property inputs
+                        self.getpyobsAOP(wavelength)
 
-        # add up the thicknesses to get edge level altitudes and pressures
-        npts, nlev = dz.shape
-        ze = np.array([dz[:,i:].sum(axis=1) for i in range(nlev)])
-        # append surface level, altitude = 0
-        # [nlev+1,nacross]
-        self.ze = np.append(ze,np.zeros([1,npts]),axis=0)
+                        # Initiate Output Arrays
+                        self.initOutputs()
+                        if do_vlidort:
+                            # Run VLIDORT using multiprocessing
+                            self.runVLIDORT(ich)
 
-        ptop = 1. # Pa
-        pe = np.zeros([self.nlev+1,self.nacross])
-        pe[0,:] = ptop
-        for ilev in range(self.nlev):
-            pe[ilev+1,:] = pe[ilev,:] + self.aer['DELP'][:,ilev]
-
-        self.pe = pe
-
-        # get the mid-level pressures and temperatures
-        self.pm = (self.pe[:-1,:] + self.pe[1:,:])*0.5
-        self.tm = self.pm/(self.aer['AIRDENS'].T*RGAS)
-
-        # get the edge level temperature
-        self.te = np.zeros([self.nlev+1,self.nacross])
-        self.te[0,:] = self.tm[0,:]  #isothermal a highest level
-        for ilev in range(1,self.nlev):
-            alpha = np.log(self.pe[ilev,:]/self.pm[ilev-1,:])/np.log(self.pm[ilev,:]/self.pm[ilev-1,:])
-            self.te[ilev,:] = self.tm[ilev-1] + alpha*(self.tm[ilev,:] - self.tm[ilev-1,:])
-
-        # dry adiabatic
-        self.te[self.nlev,:] = self.tm[self.nlev-1,:]*(self.pe[self.nlev,:]/self.pm[self.nlev-1,:])**KAPPA
-
-    #---
-    def getMie(self):
-        """
-        Use pyobs utilities to load mietables
-        """
-        self.mieTable = yaml.safe_load(open(self.rcFile))
-        self.vector = True
-
-        # load mietables
-        # ---------------------------
-        self.p, self.m = 0,0
-        for s in self.mieTable:
-            m = self.mieTable[s]
-            m['mie'] = mt.MIETABLE(m['monoFile'])
-
-        
-            dims = dict(self.mieTable[s]['mie'].ds.sizes)
-            self.p = max(self.p,dims['p'])
-            self.m = max(self.m,dims['m'])
+                        # Write outputs
+                        self.writeNC(ich,ityme)
+     
+                # close pool of processors
+                if do_vlidort:
+                    p.close()
 
     #--
     def getDims(self):
@@ -321,15 +290,9 @@ class ACCP_POLAR_VLIDORT(VLIDORT,G2GAOP):
         self.iGood = self.iGood & (self.SZA < 80)
         self.nobs = np.sum(self.iGood)         
 
-    def runVLIDORT(self):
-        """
-        Calls VLIDORT 
-        """
-
+    #---
+    def initOutputs(self):
         # Initiate output arrays
-        iGood  = np.arange(self.nacross)[self.iGood]
-        nobs   = self.nobs
-        nlev   = self.nlev
         nch    = self.nch
         nacross = self.nacross
         self.I = np.ones([nacross,nch])*MISSING
@@ -340,81 +303,83 @@ class ACCP_POLAR_VLIDORT(VLIDORT,G2GAOP):
         self.BR_Q = np.ones([nacross,nch])*MISSING
         self.BR_U = np.ones([nacross,nch])*MISSING
 
-        # Calculate ROT
-        args = [self.channels, self.pe.astype('float64'), self.ze.astype('float64'), self.te.astype('float64'), MISSING, self.verbose]
-        vlidortWrapper = WrapperFuncs['ROT_CALC']
-        ROT, depol_ratio, rc = vlidortWrapper(*args)  
-        self.depol_ratio = depol_ratio         
-        self.ROT = ROT 
+    #---
+    def runVLIDORT(self,ich):
+        """
+        Calls VLIDORT 
+        """
 
-        p = Pool(120) 
-        # loop through channels
-        for ich in np.arange(self.nch):
-            print('ich ',ich,self.nch)            
-            self.channel = [self.channels[ich]]
-            self.aop = self.getAOPrt(wavelength=self.channels[ich],vector=True)
-            rot  = ROT[:,iGood,ich:ich+1]
-            depol_ratio = [self.depol_ratio[ich]]
+        # Get the index of good obs
+        iGood  = np.arange(self.nacross)[self.iGood]
+        nobs   = self.nobs
+        nlev   = self.nlev
+        nch    = self.nch
+        nacross = self.nacross
+        self.channel = [self.channels[ich]]
 
-            # need to reshape these to [nlev,nch,nobs]
-            tau = self.aop.AOT[iGood,:].astype('float64').expand_dims(dim={"ch": 1},axis=1).transpose().to_numpy()
-            ssa = self.aop.SSA[iGood,:,].astype('float64').expand_dims(dim={"ch": 1},axis=1).transpose().to_numpy()
-            pmom = self.aop.PMOM[iGood,:,:,:].astype('float64').transpose('lev','ncross','m','p').expand_dims(dim={"ch": 1},axis=1).to_numpy()
+        # Subset ROT for good obs only
+        rot  = self.ROT[:,iGood,ich:ich+1]
+        depol_ratio = [self.depol_ratio[ich]]
 
-            pe   = self.pe[:,iGood].astype('float64')
-            ze   = self.ze[:,iGood].astype('float64')
-            te   = self.te[:,iGood].astype('float64')
+        # Subset AOP for good obs only. dims are [nlev,nch,nobs]
+        tau = self.aop.AOT[iGood,:].astype('float64').expand_dims(dim={"ch": 1},axis=1).transpose().to_numpy()
+        ssa = self.aop.SSA[iGood,:,].astype('float64').expand_dims(dim={"ch": 1},axis=1).transpose().to_numpy()
+        pmom = self.aop.PMOM[iGood,:,:,:].astype('float64').transpose('lev','ncross','m','p').expand_dims(dim={"ch": 1},axis=1).to_numpy()
+
+        pe   = self.pe[:,iGood].astype('float64')
+        ze   = self.ze[:,iGood].astype('float64')
+        te   = self.te[:,iGood].astype('float64')
 
 
-            # Get surface data
-            param     = self.RTLSparam[:,ich:ich+1,iGood].astype('float64')
-            kernel_wt = self.kernel_wt[:,ich:ich+1,iGood].astype('float64')
+        # Get surface data
+        param     = self.RTLSparam[:,ich:ich+1,iGood].astype('float64')
+        kernel_wt = self.kernel_wt[:,ich:ich+1,iGood].astype('float64')
 
-            vza = self.VZA[iGood].astype('float64')
-            sza = self.SZA[iGood].astype('float64')
-            raa = self.RAA[iGood].astype('float64')
-            
-            I = []
-            Q = []
-            U = []
-            reflectance = []
-            surf_reflectance = []
-            BR_Q = []
-            BR_U = []
-            args = [(self.channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
-                    tau[:,:,i:i+1], ssa[:,:,i:i+1], pmom[:,:,i:i+1,:,:],
-                    pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                    kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
-                    sza[i:i+1], raa[i:i+1], vza[i:i+1],
-                    MISSING,
-                    self.verbose) for i in range(nobs)]
-            result = p.map(MODIS_BRDF_run,args)
-            
-            for r in result:
-                I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
-                I.append(I_r)
-                Q.append(Q_r)
-                U.append(U_r)
-                reflectance.append(reflectance_r)
-                surf_reflectance.append(surf_reflectance_r)
-                BR_Q.append(BR_Q_r)
-                BR_U.append(BR_U_r)
-            I = np.concatenate(I)
-            Q = np.concatenate(Q)
-            U = np.concatenate(U)
-            reflectance = np.concatenate(reflectance)
-            surf_reflectance = np.concatenate(surf_reflectance)
-            BR_Q = np.concatenate(BR_Q)
-            BR_U = np.concatenate(BR_U)
+        vza = self.VZA[iGood].astype('float64')
+        sza = self.SZA[iGood].astype('float64')
+        raa = self.RAA[iGood].astype('float64')
+        
+        I = []
+        Q = []
+        U = []
+        reflectance = []
+        surf_reflectance = []
+        BR_Q = []
+        BR_U = []
+        args = [(self.channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
+                tau[:,:,i:i+1], ssa[:,:,i:i+1], pmom[:,:,i:i+1,:,:],
+                pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
+                kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                sza[i:i+1], raa[i:i+1], vza[i:i+1],
+                MISSING,
+                self.verbose) for i in range(nobs)]
+        result = p.map(MODIS_BRDF_run,args)
+        
+        for r in result:
+            I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
+            I.append(I_r)
+            Q.append(Q_r)
+            U.append(U_r)
+            reflectance.append(reflectance_r)
+            surf_reflectance.append(surf_reflectance_r)
+            BR_Q.append(BR_Q_r)
+            BR_U.append(BR_U_r)
+        I = np.concatenate(I)
+        Q = np.concatenate(Q)
+        U = np.concatenate(U)
+        reflectance = np.concatenate(reflectance)
+        surf_reflectance = np.concatenate(surf_reflectance)
+        BR_Q = np.concatenate(BR_Q)
+        BR_U = np.concatenate(BR_U)
 
-            self.I[iGood,ich] = np.squeeze(I)
-            self.reflectance[iGood,ich] = np.squeeze(reflectance)
-            self.surf_reflectance[iGood,ich] = np.squeeze(surf_reflectance)
-            self.Q[iGood,ich] = np.squeeze(Q)
-            self.U[iGood,ich] = np.squeeze(U) 
-            self.BR_Q[iGood,ich] = np.squeeze(BR_Q)
-            self.BR_U[iGood,ich] = np.squeeze(BR_U) 
-        p.close()
+        self.I[iGood,ich] = np.squeeze(I)
+        self.reflectance[iGood,ich] = np.squeeze(reflectance)
+        self.surf_reflectance[iGood,ich] = np.squeeze(surf_reflectance)
+        self.Q[iGood,ich] = np.squeeze(Q)
+        self.U[iGood,ich] = np.squeeze(U) 
+        self.BR_Q[iGood,ich] = np.squeeze(BR_Q)
+        self.BR_U[iGood,ich] = np.squeeze(BR_U)
+ 
     #---
     def writeNC (self,ityme,zlib=True):
         """
