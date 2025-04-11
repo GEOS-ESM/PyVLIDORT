@@ -114,33 +114,34 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         # limit iGood to sza < 80
         self.readAngles()
 
-        if self.nobs == 0:
-            self.writeNC(empty=True)
-        else:
-
-            # Read in model data
-            self.readSampledGEOS()
+        if self.nobs > 0:
 
             # Read in surface data
             self.readSampledAMESBRDF()
 
-            # Calculate P,T atmospheric profile properties needed for Rayleigh calc
-            self.getEdgeVars()   
-
             # Land-Sea Mask
             # limit iGood to land pixels
-            self.LandSeaMask()       
+            self.LandSeaMask()      
+
+            # Do only 1 batch of  pixels
+            self.nobs = self.nbatch
+            self.iGood[np.where(self.iGood)[0][self.nobs:]] = False
+
+            # Read in model data
+            self.readSampledGEOS() 
+
+            # Calculate P,T atmospheric profile properties needed for Rayleigh calc
+            self.getEdgeVars()
 
             # Get pool of processors
             if not dryrun and do_vlidort:
                 p = Pool(self.nproc)
 
-            if self.nobs == 0:
-                self.writeNC(empty=True)
-            else:
+            if self.nobs > 0:
                 if not dryrun:
                     # Loop through channels
-                    for ich,wavelength in enumerate(self.channels[0:1]):
+                    for ich,wavelength in enumerate(self.channels):
+                        print('ich ',ich)
                         # Get Rayleigh optical depth profile
                         self.getROT(wavelength)
 
@@ -150,8 +151,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                             # Run VLIDORT using multiprocessing
                             self.runVLIDORT(p,ich)
 
-                        # Write outputs
-                        self.writeNC(ich)
+                    # Write outputs
+                    self.writeNC()
  
             # close pool of processors
             if not dryrun and do_vlidort:
@@ -206,6 +207,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.AER = self.AER.squeeze()
         self.AER = self.AER.stack(nobs=("time","ncross"))
         self.AER = self.AER.transpose("nobs","lev")
+        iGood = np.arange(len(self.iGood))[self.iGood]
+        self.AER = self.AER.isel(nobs=iGood)
 
     # ---
     def LandSeaMask(self):
@@ -319,7 +322,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.SSA  = np.ones([nlev,nobs,nch])*MISSING
         self.TAU  = np.ones([nlev,nobs,nch])*MISSING
         self.G    = np.ones([nlev,nobs,nch])*MISSING
-
+        self.DEPOL = np.ones([nch])*MISSING
+        self.ROT_   = np.ones([nlev,nobs,nch])*MISSING
     #---
     def runVLIDORT(self,p,ich):
         """
@@ -341,21 +345,21 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             npts = eob - sob
 
             # Subset ROT for good obs only. dims are [nlev,nobs]
-            rot  = self.ROT[:,iobs,:]
+            rot  = self.ROT[:,sob:eob,:]
             depol_ratio = self.depol_ratio
 
             # Subset aerosol fields for good obs only.
             # calculate AOPs dims are [nlev,nch,nobs]
-            self.aer = self.AER.isel(nobs=iobs)    
+            self.aer = self.AER.isel(nobs=slice(sob,eob))    
             self.getpyobsAOP(self.channels[ich])
             tau = self.tau
             ssa = self.ssa
             pmom = self.pmom
 
             # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
-            pe   = self.pe[:,iobs].astype('float64')
-            ze   = self.ze[:,iobs].astype('float64')
-            te   = self.te[:,iobs].astype('float64')
+            pe   = self.pe[:,sob:eob].astype('float64')
+            ze   = self.ze[:,sob:eob].astype('float64')
+            te   = self.te[:,sob:eob].astype('float64')
 
 
             # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
@@ -414,12 +418,14 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             self.U[sob:eob,ich] = np.squeeze(U) 
             self.BR_Q[sob:eob,ich] = np.squeeze(BR_Q)
             self.BR_U[sob:eob,ich] = np.squeeze(BR_U)
-            self.TAU[:,sob:eob,:] = np.transpose(tau,[0,2,1])
-            self.SSA[:,sob:eob,:] = np.transpose(ssa,[0,2,1])
-            self.G[:,sob:eob,:] = np.transpose(self.g,[0,2,1])
+            self.TAU[:,sob:eob,ich] = np.transpose(tau,[0,2,1]).squeeze()
+            self.SSA[:,sob:eob,ich] = np.transpose(ssa,[0,2,1]).squeeze()
+            self.G[:,sob:eob,ich] = np.transpose(self.g,[0,2,1]).squeeze()
+            self.DEPOL[ich] = self.depol_ratio
+            self.ROT_[:,sob:eob,ich] = rot.squeeze()
 
     #---
-    def writeNC (self,ich=None,empty=False):
+    def writeNC (self):
         """
         Write a NetCDF file vlidort output
         """
@@ -429,18 +435,9 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
         # create xarray data arrays of outputs
         # ------------------------------------
-        if ich is not None:
-            nch = 1
-            channels = self.channels[ich]
-            chcoord = [ich]
-        else:
-            nch = self.nch
-            channels = self.channels 
-            chcoord = np.arange(nch)
-
-        # use an input file to set dims and coords
-        col = 'aer_Nv'
-        dsaer = xr.open_dataset(self.inFile.replace('%col',col))
+        nch = self.nch
+        channels = self.channels
+        chcoord = np.arange(self.nch)
 
         # Define variable attributes
         toa_att = dict(
@@ -535,14 +532,11 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         # Create dataset
         ds = xr.Dataset(
             data_vars=dict(
-                longitude=(['time','across'],dsaer['longitude'].squeeze().values,dsaer['longitude'].attrs),
-                latitude=(['time','across'],dsaer['latitude'].squeeze().values,dsaer['latitude'].attrs),
                 wavelength=(['ch'],channels,ch_att),
             ),
             coords=dict(
-                time=dsaer['time'],
-                lev=dsaer['lev'],
-                across=np.arange(self.nacross),
+                lev=np.arange(self.nlev),
+                nobs=np.arange(self.nobs),
                 ch=chcoord,
             ),
             attrs=dict(
@@ -557,99 +551,67 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 ),
         )
 
-        # Add 2-D Variables
-        dims = ["time", "across", "ch"]
+        # Add 1-D Variables
+        dims = ["ch"]
         coords = dict(
-                time=dsaer['time'],
-                across=np.arange(self.nacross),
                 ch=chcoord,
             )
 
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.reflectance
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=toa_att)
-        ds['toa_reflectance'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.I
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=I_att)
-        ds['I'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.Q
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=Q_att)
-        ds['Q'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.U
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=U_att)
-        ds['U'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.surf_reflectance
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=sref_att)
-        ds['surf_reflectance'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.BR_Q
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=srefq_att)
-        ds['surf_reflectance_Q'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.BR_U
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=srefu_att)
-        ds['surf_reflectance_U'] = da
-
-        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[self.iGood,:] = self.depol_ratio[:]
-        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=depol_att)
+        da = xr.DataArray(self.DEPOL,dims=dims,coords=coords,attrs=depol_att)
         ds['depol_ratio'] = da
 
-        # Add 3-D varaibles
-        dims = ["lev","time", "across", "ch"]
-        coords=dict(
-                time=dsaer['time'],
-                lev=dsaer['lev'],
-                across=np.arange(self.nacross),
+
+        # Add 2-D Variables
+        dims = ["nobs", "ch"]
+        coords = dict(
+                nobs=np.arange(self.nobs),
                 ch=chcoord,
             )
 
-        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[:,self.iGood,:] = self.ROT
-        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=rot_att)
+        da = xr.DataArray(self.reflectance,dims=dims,coords=coords,attrs=toa_att)
+        ds['toa_reflectance'] = da
+
+        da = xr.DataArray(self.I,dims=dims,coords=coords,attrs=I_att)
+        ds['I'] = da
+
+        da = xr.DataArray(self.Q,dims=dims,coords=coords,attrs=Q_att)
+        ds['Q'] = da
+
+        da = xr.DataArray(self.U,dims=dims,coords=coords,attrs=U_att)
+        ds['U'] = da
+
+        da = xr.DataArray(self.surf_reflectance,dims=dims,coords=coords,attrs=sref_att)
+        ds['surf_reflectance'] = da
+
+        da = xr.DataArray(self.BR_Q,dims=dims,coords=coords,attrs=srefq_att)
+        ds['surf_reflectance_Q'] = da
+
+        da = xr.DataArray(self.BR_U,dims=dims,coords=coords,attrs=srefu_att)
+        ds['surf_reflectance_U'] = da
+
+
+        # Add 3-D varaibles
+        dims = ["lev","nobs", "ch"]
+        coords=dict(
+                lev=np.arange(self.nlev),
+                nobs=np.arange(self.nobs),
+                ch=chcoord,
+            )
+
+        da = xr.DataArray(self.ROT_,dims=dims,coords=coords,attrs=rot_att)
         ds['ROT'] = da
 
-        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[:,self.iGood,:] = self.TAU
-        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=aot_att)
+        da = xr.DataArray(self.TAU,dims=dims,coords=coords,attrs=aot_att)
         ds['TAU'] = da
 
-        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[:,self.iGood,:] = self.SSA
-        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=ssa_att)
+        da = xr.DataArray(self.SSA,dims=dims,coords=coords,attrs=ssa_att)
         ds['SSA'] = da
 
-        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
-        if not empty:
-            temp[:,self.iGood,:] = self.G
-        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=g_att)
+        da = xr.DataArray(self.G,dims=dims,coords=coords,attrs=g_att)
         ds['G'] = da
 
         # Write netcdf file
         encoding = dict(
-            longitude={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-            latitude={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             toa_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             I={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             Q={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
@@ -664,11 +626,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             G={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             )
 
-        if (ich == 0) or (ich is None):
-            mode='w'
-        else:
-            mode='a'
-        ds.to_netcdf(path=self.outFile,format='NETCDF4',engine='netcdf4',encoding=encoding,unlimited_dims=['ch'],mode=mode)
+        ds.to_netcdf(path=self.outFile,format='NETCDF4',engine='netcdf4',encoding=encoding,unlimited_dims=['ch'])
 
         if self.verbose:
             print(" <> wrote %d %s "%(ich,self.outFile))
