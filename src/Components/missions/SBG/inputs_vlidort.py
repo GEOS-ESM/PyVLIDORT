@@ -39,8 +39,6 @@ class INPUTS_VLIDORT(G2GAOP):
         ROT: [nlev,npts,nch]
         depol_ratio: [nch]
         """
-        if isinstance(wavelength,float):
-            wavelength = [wavelength]
         args = [wavelength, self.pe.astype('float64'), self.ze.astype('float64'), self.te.astype('float64'), self.MISSING, self.verbose]
         vlidortWrapper = WrapperFuncs['ROT_CALC']
         self.ROT, self.depol_ratio, rc = vlidortWrapper(*args)        
@@ -57,10 +55,13 @@ class INPUTS_VLIDORT(G2GAOP):
         # need to reshape these to [nlev,nch,nobs]
         aop = aop.expand_dims(dim={"ch": 1},axis=1)
 
-        self.tau = aop.AOT.astype('float64').transpose('lev','ch','ncross').to_numpy()
-        self.ssa = aop.SSA.astype('float64').transpose('levl','ch','ncross').to_numpy()
-        self.pmom = aop.PMOM.astype('float64').transpose('lev','ch','ncross','m','p').to_numpy()
+        self.tau = aop.AOT.astype('float64').transpose('lev','ch','nobs').to_numpy()
+        self.ssa = aop.SSA.astype('float64').transpose('lev','ch','nobs').to_numpy()
+        self.pmom = aop.PMOM.astype('float64').transpose('lev','ch','nobs','m','p').to_numpy()
 
+        aop = self.getAOPrt(wavelength=wavelength)
+        aop = aop.expand_dims(dim={"ch": 1},axis=1)
+        self.g = aop.G.astype('float64').transpose('lev','ch','nobs').to_numpy()
 
     #---
     def getEdgeVars(self):
@@ -80,8 +81,8 @@ class INPUTS_VLIDORT(G2GAOP):
         # pe [nlev+,npts]
         # ze [nlev+1,npts]
         # -----------------------------------------
-        rhodz = self.aer['DELP'] / GRAV
-        dz = rhodz / self.aer['AIRDENS']       # column thickness in m
+        rhodz = self.AER['DELP'] / GRAV
+        dz = rhodz / self.AER['AIRDENS']       # column thickness in m
 
         # add up the thicknesses to get edge level altitudes and pressures
         npts, nlev = dz.shape
@@ -94,13 +95,13 @@ class INPUTS_VLIDORT(G2GAOP):
         pe = np.zeros([nlev+1,npts])
         pe[0,:] = ptop
         for ilev in range(nlev):
-            pe[ilev+1,:] = pe[ilev,:] + self.aer['DELP'][:,ilev]
+            pe[ilev+1,:] = pe[ilev,:] + self.AER['DELP'][:,ilev]
 
         self.pe = pe
 
         # get the mid-level pressures and temperatures
         self.pm = (self.pe[:-1,:] + self.pe[1:,:])*0.5
-        self.tm = self.pm/(self.aer['AIRDENS'].T*RGAS)
+        self.tm = self.pm/(self.AER['AIRDENS'].T*RGAS)
 
         # get the edge level temperature
         self.te = np.zeros([nlev+1,npts])
