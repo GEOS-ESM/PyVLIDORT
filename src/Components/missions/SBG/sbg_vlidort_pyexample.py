@@ -22,7 +22,7 @@ import yaml
 from inputs_vlidort import INPUTS_VLIDORT
 
 
-from py_leo_vlidort.vlidort import VLIDORT, MODIS_BRDF_run
+from py_vlidort.vlidort import VLIDORT, MODIS_BRDF_run
 from multiprocessing import Pool
 
 # Generic Lists of Varnames and Units
