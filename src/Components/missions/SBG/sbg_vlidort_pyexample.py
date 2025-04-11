@@ -618,7 +618,7 @@ if __name__ == "__main__":
         print('++++Running VLIDORT with the following arguments+++')
         print('>>>inFile:    ',inFile)
         print('>>>outFile:   ',outFile)
-        print('>>>rcFile:    ',rcFile)
+        print('>>>mtFile:    ',mtFile)
         print('>>>albedoType:',albedoType)
         print('>>>brdfFile:  ',brdfFile)
         print('>>>verbose:   ',args.verbose)
