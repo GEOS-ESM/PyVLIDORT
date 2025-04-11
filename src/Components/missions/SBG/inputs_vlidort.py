@@ -55,12 +55,11 @@ class INPUTS_VLIDORT(G2GAOP):
         aop = self.getAOPrt(wavelength=wavelength,vector=True)
 
         # need to reshape these to [nlev,nch,nobs]
-        if isinstance(wavelength,float):
-            aop = aop.expand_dims(dim={"ch": 1},axis=1)
+        aop = aop.expand_dims(dim={"ch": 1},axis=1)
 
-        self.tau = aop.AOT.astype('float64').transpose().to_numpy()
-        self.ssa = aop.SSA.astype('float64').transpose().to_numpy()
-        self.pmom = aop.PMOM.astype('float64').transpose('lev','ch','nobs','m','p').to_numpy()
+        self.tau = aop.AOT.astype('float64').transpose('lev','ch','ncross').to_numpy()
+        self.ssa = aop.SSA.astype('float64').transpose('levl','ch','ncross').to_numpy()
+        self.pmom = aop.PMOM.astype('float64').transpose('lev','ch','ncross','m','p').to_numpy()
 
 
     #---
@@ -72,9 +71,14 @@ class INPUTS_VLIDORT(G2GAOP):
         """
 
         # Get layer thicnkness from DELP & AIRDENS
-        # DELP: Pa = kg m-1 s-2
-        # AIRDENS: kg m-3
+        # DELP: Pa = kg m-1 s-2 [npts,nlev]
+        # AIRDENS: kg m-3       [npts,nlev]
         # GRAV: m s-2
+
+        # output
+        # te [nlev+,npts]
+        # pe [nlev+,npts]
+        # ze [nlev+1,npts]
         # -----------------------------------------
         rhodz = self.aer['DELP'] / GRAV
         dz = rhodz / self.aer['AIRDENS']       # column thickness in m
