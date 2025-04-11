@@ -22,7 +22,7 @@ import yaml
 from inputs_vlidort import INPUTS_VLIDORT
 
 
-from py_vlidort.vlidort import VLIDORT, MODIS_BRDF_run
+from py_vlidort.vlidort import MODIS_BRDF_run
 from multiprocessing import Pool
 
 # Generic Lists of Varnames and Units
@@ -48,7 +48,7 @@ ncALIAS = {'LONGITUDE': 'longitude',
 MISSING = np.float32(-1.e+20)
 
 
-class SBG_VLIDORT(VLIDORT,INPUTS_VLIDORT):
+class SBG_VLIDORT(INPUTS_VLIDORT):
     """
     Everything needed for calling VLIDORT
     GEOS-5 has already been sampled on satellite track
