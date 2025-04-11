@@ -90,6 +90,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.nstreams    = nstreams
         self.plane_parallel = plane_parallel
         self.instname   = instname
+        self.MISSING    = MISSING
 
 
         # load optics tables
