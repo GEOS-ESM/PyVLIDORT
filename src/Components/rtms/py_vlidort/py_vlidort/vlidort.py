@@ -8,8 +8,7 @@
 
 import os
 from   netCDF4 import Dataset
-#from   mieobs  import  getAOPvector, getEdgeVars
-from   leo_vlidort import VLIDORT_POLAR_ 
+from   py_vlidort import VLIDORT_POLAR_ 
 import numpy   as np
 from pyobs.constants import *
 from scipy import interpolate
@@ -419,33 +418,6 @@ class VLIDORT(object):
         km = 72
         nch = 1
         self.alpha = np.zeros([km,self.nobs,nch])
-
-    #---
-    def computeMie(self):
-        """
-        Computes aerosol optical quantities 
-        """
-        tau,ssa,g,pmom = getAOPvector(self,self.channel,
-                                 vnames=self.AERNAMES,
-                                 Verbose=self.verbose,
-                                 rcfile=self.rcFile,
-                                 nMom=self.nMom)
-        self.tau = tau  #(km,nch,nobs)
-        self.ssa = ssa  #(km,nch,nobs)
-        self.g   = g    #(km,nch,nobs)
-
-        # Multiply by -1 to go from Mischenko convention to VLIDORT
-        pmom[:,:,:,:,1] = -1.*pmom[:,:,:,:,1]
-        pmom[:,:,:,:,3] = -1.*pmom[:,:,:,:,3]
-        self.pmom = pmom #(km,nch,nobs,nMom,nPol)
-    # --
-    def computeAtmos(self):
-
-        pe, ze, te = getEdgeVars(self)
-
-        self.pe = pe # (km,nobs)
-        self.ze = ze 
-        self.te = te
 
     #---
     def MODIS_BRDF_run(self,vlidortWrapper,ROT,depol_ratio,tau,ssa,pmom,pe,ze,te,sza,raa,vza,iGood):
