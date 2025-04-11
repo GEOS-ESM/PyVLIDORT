@@ -75,7 +75,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 plane_parallel=True,
                 brdfFile=None,
                 do_vlidort=True,
-                verbose=False):
+                verbose=False,
+                nproc=125):
         self.SDS_AER     = SDS_AER
         self.SDS_MET     = SDS_MET
         self.SDS_INV     = SDS_INV
@@ -91,6 +92,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.plane_parallel = plane_parallel
         self.instname   = instname
         self.MISSING    = MISSING
+        self.nproc      = nproc
 
 
         # load optics tables
@@ -102,57 +104,58 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         # get granule dimensions
         self.getDims()
 
+        # get channels
+        self.getChannels()
+        
         # Start out with all good obs
         self.iGood = np.ones([self.nobs]).astype(bool)
 
-        # do one scanline at a time
-        for ityme in range(self.ntyme)[0:1]:
-            print('ityme ',ityme,self.ntyme)
-            # Read in precalculated Scene Geometry
-            # limit iGood to sza < 80
-            self.readAngles(ityme)
+        # Read in precalculated Scene Geometry
+        # limit iGood to sza < 80
+        self.readAngles()
 
-            if self.nobs > 0:
+        if self.nobs == 0:
+            self.writeNC(empty=True)
+        else:
 
-                # Read in model data
-                self.readSampledGEOS(ityme)
+            # Read in model data
+            self.readSampledGEOS()
 
-                # Read in surface data
-                # This defines the channels
-                self.readSampledAMESBRDF(ityme)
+            # Read in surface data
+            self.readSampledAMESBRDF()
 
-                # Calculate P,T atmospheric profile properties needed for Rayleigh calc
-                self.getEdgeVars()   
+            # Calculate P,T atmospheric profile properties needed for Rayleigh calc
+            self.getEdgeVars()   
 
-                # Land-Sea Mask
-                # limit iGood to land pixels
-                self.LandSeaMask(ityme)       
+            # Land-Sea Mask
+            # limit iGood to land pixels
+            self.LandSeaMask()       
 
-                # Get pool of processors
-                if not dryrun and do_vlidort:
-                    p = Pool(120)
+            # Get pool of processors
+            if not dryrun and do_vlidort:
+                p = Pool(self.nproc)
 
+            if self.nobs == 0:
+                self.writeNC(empty=True)
+            else:
                 if not dryrun:
                     # Loop through channels
-                    for ich,wavelength in enumerate(self.channels):
+                    for ich,wavelength in enumerate(self.channels[0:1]):
                         # Get Rayleigh optical depth profile
                         self.getROT(wavelength)
-
-                        # Get Aerosol Optical property inputs
-                        self.getpyobsAOP(wavelength)
 
                         # Initiate Output Arrays
                         self.initOutputs()
                         if do_vlidort:
                             # Run VLIDORT using multiprocessing
-                            self.runVLIDORT(ich)
+                            self.runVLIDORT(p,ich)
 
                         # Write outputs
-                        self.writeNC(ich,ityme)
-     
-                # close pool of processors
-                if not dryrun and do_vlidort:
-                    p.close()
+                        self.writeNC(ich)
+ 
+            # close pool of processors
+            if not dryrun and do_vlidort:
+                p.close()
 
     #--
     def getDims(self):
@@ -164,11 +167,25 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             print('opening file',self.inFile.replace('%col',col))
         ds = xr.open_dataset(self.inFile.replace('%col',col)) 
         self.ntyme,self.nlev,self.nacross = ds.sizes['time'],ds.sizes['lev'],ds.sizes['ncross']
-        self.nobs = self.nacross
-        
+        self.nobs = self.nacross*self.ntyme
+        self.nbatch = self.nproc
 
     #---
-    def readSampledGEOS(self,ityme):
+    def getChannels(self):
+        """
+        Read in AMES BRDF to get the channels
+        """
+        if self.verbose:
+            print('opening BRDF file ',self.brdfFile)
+        ds = xr.open_mfdataset(os.path.dirname(self.brdfFile)+'/*ames*',chunks="auto")
+
+        self.channels = ds.nwav.values  # microns
+        self.nch = len(self.channels)
+        self.channels = self.channels*1e3  # nm
+        ds.close()        
+
+    #---
+    def readSampledGEOS(self):
         """
         Read in model sampled track
         """
@@ -184,31 +201,33 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             if self.verbose:
                 print('opening file',self.inFile.replace('%col',col))
 
-        self.aer = xr.open_mfdataset(inList)
+        self.AER = xr.open_mfdataset(inList,chunks="auto")
         # make arrays [nobs,nlev]
-        self.aer = self.aer.squeeze()
-        self.aer = self.aer.isel(time=ityme)
-        self.aer = self.aer.transpose()
+        self.AER = self.AER.squeeze()
+        self.AER = self.AER.stack(nobs=("time","ncross"))
+        self.AER = self.AER.transpose("nobs","lev")
 
     # ---
-    def LandSeaMask(self,ityme):
+    def LandSeaMask(self):
         """
         Read in invariant dataset
         """
         col = 'asm_Nx'
         if self.verbose:
             print('opening file',self.inFile.replace('%col',col))
-        ds = xr.open_dataset(self.inFile.replace('%col',col))
+        ds = xr.open_dataset(self.inFile.replace('%col',col),chunks="auto")
 
         for sds in self.SDS_INV:
             sds_ = sds
             if sds in ncALIAS:
                 sds_ = ncALIAS[sds]
-            var = ds[sds_].isel(time=ityme).squeeze().values
+            var = ds[sds_].squeeze().stack(nobs=("time","ncross"))
             self.__dict__[sds] = var
 
-        self.iLand = self.FRLAND >= 0.99
-        self.iSea  = self.FRLAND < 0.99
+        iGood = self.FRLAND >= 0.99
+        self.iLand = iGood.values
+        iGood = self.FRLAND < 0.99
+        self.iSea  = iGood.values
 
         # self.iGood = self.iGood & iGood
         self.nobsLand  = np.sum(self.iGood & self.iLand)
@@ -219,48 +238,40 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
 
     #---
-    def readSampledAMESBRDF(self,ityme):
+    def readSampledAMESBRDF(self):
         """
         Read in AMES BRDF kernel weights
         that have already been sampled on swath
         """
         if self.verbose:
             print('opening BRDF file ',self.brdfFile)
-        ds = xr.open_dataset(self.brdfFile)
+        ds = xr.open_dataset(self.brdfFile,chunks="auto")
 
-        self.channels = ds.nwav.values  # microns
-        self.nch = len(self.channels)
-        self.channels = self.channels*1e3  # nm
-        self.Riso = ds.Ki.isel(time=ityme).squeeze().values
-        self.Rgeo = ds.Kg.isel(time=ityme).squeeze().values
-        self.Rvol = ds.Kv.isel(time=ityme).squeeze().values
+        # concatenate kernel weights into one data array
+        da = xr.concat([ds.Ki,ds.Kg,ds.Kv],dim="nalong")
+        da = da.rename("kernel_wt")
 
+        # reshape to [nkernel,nch,nobs]
+        self.kernel_wt = da.squeeze().stack(nobs=("time","ncross")).transpose("nalong","nwav","nobs")
 
-        self.Riso.shape = (1,self.nch,self.nacross)
-        self.Rgeo.shape = (1,self.nch,self.nacross)
-        self.Rvol.shape = (1,self.nch,self.nacross)
+        # make an array of the params, just big enough for a batch
+        param1 = np.array([2]*self.nbatch)
+        param2 = np.array([1]*self.nbatch)
 
-        # [nkernel,nch,nacross]
-        self.kernel_wt = np.append(self.Riso,self.Rgeo,axis=0)
-        self.kernel_wt = np.append(self.kernel_wt,self.Rvol,axis=0)
-        self.kernel_wt = self.kernel_wt.reshape(3,self.nch,self.nacross)
-
-        param1 = np.array([2]*self.nch*self.nacross)
-        param2 = np.array([1]*self.nch*self.nacross)
-
-        param1.shape = (1,self.nch,self.nacross)
-        param2.shape = (1,self.nch,self.nacross)
+        #[nparam,nch,nobs]
+        param1.shape = (1,1,self.nbatch)
+        param2.shape = (1,1,self.nbatch)
 
         # [nparam,nch,nobs]
         self.RTLSparam = np.append(param1,param2,axis=0)
-        self.RTLSparam = self.RTLSparam.reshape(2,self.nch,self.nacross)
+        self.RTLSparam = self.RTLSparam.reshape(2,1,self.nbatch)
 
         # filter for nans
         iGood = ~np.isnan(self.kernel_wt[0,0,:])
-        self.iGood = self.iGood & iGood
+        self.iGood = self.iGood & iGood.values
         self.nobs = np.sum(self.iGood)
 
-    def readAngles(self,ityme):
+    def readAngles(self):
         """
         Read in viewing and solar Geometry from angFile
         """
@@ -268,264 +279,409 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         col = self.instname
         if self.verbose: 
             print('opening file',self.inFile.replace('%col',col))
-        ds = xr.open_dataset(self.inFile.replace('%col',col))
+        ds = xr.open_dataset(self.inFile.replace('%col',col),chunks="auto")
 
         for sds in self.SDS_ANG:
             sds_ = sds
             if sds in ncALIAS:
                 sds_ = ncALIAS[sds]
-            var = ds[sds_].isel(time=ityme).squeeze().values
+            var = ds[sds_].squeeze().stack(nobs=("time","ncross"))
             self.__dict__[sds] = var
 
         # define RAA according to photon travel direction
         saa = self.SAA + 180.0
         I = saa >= 360.
-        saa[I] = saa[I] - 360.
+        saa[I.compute()] = saa[I.compute()] - 360.
 
         RAA = self.VAA - saa
-        RAA[RAA < 0] = RAA[RAA<0]+360.0
+        I = RAA < 0
+        RAA[I.compute()] = RAA[I.compute()]+360.0
         self.RAA = RAA
 
         # Limit SZAs
-        self.iGood = self.iGood & (self.SZA < 80)
+        iGood = self.SZA < 80
+        self.iGood = self.iGood & iGood.values
         self.nobs = np.sum(self.iGood)         
 
     #---
     def initOutputs(self):
         # Initiate output arrays
         nch    = self.nch
-        nacross = self.nacross
-        self.I = np.ones([nacross,nch])*MISSING
-        self.Q = np.ones([nacross,nch])*MISSING
-        self.U = np.ones([nacross,nch])*MISSING
-        self.reflectance = np.ones([nacross,nch])*MISSING
-        self.surf_reflectance = np.ones([nacross,nch])*MISSING
-        self.BR_Q = np.ones([nacross,nch])*MISSING
-        self.BR_U = np.ones([nacross,nch])*MISSING
+        nobs   = self.nobs
+        nlev   = self.nlev
+        self.I = np.ones([nobs,nch])*MISSING
+        self.Q = np.ones([nobs,nch])*MISSING
+        self.U = np.ones([nobs,nch])*MISSING
+        self.reflectance = np.ones([nobs,nch])*MISSING
+        self.surf_reflectance = np.ones([nobs,nch])*MISSING
+        self.BR_Q = np.ones([nobs,nch])*MISSING
+        self.BR_U = np.ones([nobs,nch])*MISSING
+        self.SSA  = np.ones([nlev,nobs,nch])*MISSING
+        self.TAU  = np.ones([nlev,nobs,nch])*MISSING
+        self.G    = np.ones([nlev,nobs,nch])*MISSING
 
     #---
-    def runVLIDORT(self,ich):
+    def runVLIDORT(self,p,ich):
         """
         Calls VLIDORT 
         """
 
         # Get the index of good obs
-        iGood  = np.arange(self.nacross)[self.iGood]
+        iGood  = np.arange(len(self.iGood))[self.iGood]
         nobs   = self.nobs
-        nlev   = self.nlev
-        nch    = self.nch
-        nacross = self.nacross
-        self.channel = [self.channels[ich]]
 
-        # Subset ROT for good obs only
-        rot  = self.ROT[:,iGood,ich:ich+1]
-        depol_ratio = [self.depol_ratio[ich]]
+        # get wavlength
+        channel = [self.channels[ich]]
 
-        # Subset AOP for good obs only. dims are [nlev,nch,nobs]
-        tau = self.aop.AOT[iGood,:].astype('float64').expand_dims(dim={"ch": 1},axis=1).transpose().to_numpy()
-        ssa = self.aop.SSA[iGood,:,].astype('float64').expand_dims(dim={"ch": 1},axis=1).transpose().to_numpy()
-        pmom = self.aop.PMOM[iGood,:,:,:].astype('float64').transpose('lev','ncross','m','p').expand_dims(dim={"ch": 1},axis=1).to_numpy()
+        # loop through nobs in batches
+        for sob in range(0,self.nobs,self.nbatch):
+            print('sob, nobs',sob, self.nobs)
+            eob = min([self.nobs,sob + self.nbatch])
+            iobs = iGood[sob:eob]
+            npts = eob - sob
 
-        pe   = self.pe[:,iGood].astype('float64')
-        ze   = self.ze[:,iGood].astype('float64')
-        te   = self.te[:,iGood].astype('float64')
+            # Subset ROT for good obs only. dims are [nlev,nobs]
+            rot  = self.ROT[:,iobs,:]
+            depol_ratio = self.depol_ratio
+
+            # Subset aerosol fields for good obs only.
+            # calculate AOPs dims are [nlev,nch,nobs]
+            self.aer = self.AER.isel(nobs=iobs)    
+            self.getpyobsAOP(self.channels[ich])
+            tau = self.tau
+            ssa = self.ssa
+            pmom = self.pmom
+
+            # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
+            pe   = self.pe[:,iobs].astype('float64')
+            ze   = self.ze[:,iobs].astype('float64')
+            te   = self.te[:,iobs].astype('float64')
 
 
-        # Get surface data
-        param     = self.RTLSparam[:,ich:ich+1,iGood].astype('float64')
-        kernel_wt = self.kernel_wt[:,ich:ich+1,iGood].astype('float64')
+            # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
+            param     = self.RTLSparam[:,:,0:npts].astype('float64')
+            kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64')
 
-        vza = self.VZA[iGood].astype('float64')
-        sza = self.SZA[iGood].astype('float64')
-        raa = self.RAA[iGood].astype('float64')
-        
-        I = []
-        Q = []
-        U = []
-        reflectance = []
-        surf_reflectance = []
-        BR_Q = []
-        BR_U = []
-        args = [(self.channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
-                tau[:,:,i:i+1], ssa[:,:,i:i+1], pmom[:,:,i:i+1,:,:],
-                pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
-                sza[i:i+1], raa[i:i+1], vza[i:i+1],
-                MISSING,
-                self.verbose) for i in range(nobs)]
-        result = p.map(MODIS_BRDF_run,args)
-        
-        for r in result:
-            I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
-            I.append(I_r)
-            Q.append(Q_r)
-            U.append(U_r)
-            reflectance.append(reflectance_r)
-            surf_reflectance.append(surf_reflectance_r)
-            BR_Q.append(BR_Q_r)
-            BR_U.append(BR_U_r)
-        I = np.concatenate(I)
-        Q = np.concatenate(Q)
-        U = np.concatenate(U)
-        reflectance = np.concatenate(reflectance)
-        surf_reflectance = np.concatenate(surf_reflectance)
-        BR_Q = np.concatenate(BR_Q)
-        BR_U = np.concatenate(BR_U)
+            # subset angles for good obs only. dims are [nobs]
+            vza = self.VZA[iobs].astype('float64')
+            sza = self.SZA[iobs].astype('float64')
+            raa = self.RAA[iobs].astype('float64')
+           
+            # initialize temporary outputs 
+            I = []
+            Q = []
+            U = []
+            reflectance = []
+            surf_reflectance = []
+            BR_Q = []
+            BR_U = []
 
-        self.I[iGood,ich] = np.squeeze(I)
-        self.reflectance[iGood,ich] = np.squeeze(reflectance)
-        self.surf_reflectance[iGood,ich] = np.squeeze(surf_reflectance)
-        self.Q[iGood,ich] = np.squeeze(Q)
-        self.U[iGood,ich] = np.squeeze(U) 
-        self.BR_Q[iGood,ich] = np.squeeze(BR_Q)
-        self.BR_U[iGood,ich] = np.squeeze(BR_U)
- 
+            # create list of input arguments
+            args = [(channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
+                    tau[:,:,i:i+1], ssa[:,:,i:i+1], pmom[:,:,i:i+1,:,:],
+                    pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
+                    kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                    sza[i:i+1], raa[i:i+1], vza[i:i+1],
+                    MISSING,
+                    self.verbose) for i in range(npts)]
+
+            # run vlidort distributed across processors
+            result = p.map(MODIS_BRDF_run,args)
+           
+            # reshape outputs  
+            for r in result:
+                I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
+                I.append(I_r)
+                Q.append(Q_r)
+                U.append(U_r)
+                reflectance.append(reflectance_r)
+                surf_reflectance.append(surf_reflectance_r)
+                BR_Q.append(BR_Q_r)
+                BR_U.append(BR_U_r)
+            I = np.concatenate(I)
+            Q = np.concatenate(Q)
+            U = np.concatenate(U)
+            reflectance = np.concatenate(reflectance)
+            surf_reflectance = np.concatenate(surf_reflectance)
+            BR_Q = np.concatenate(BR_Q)
+            BR_U = np.concatenate(BR_U)
+
+            # store outputs 
+            self.I[sob:eob,ich] = np.squeeze(I)
+            self.reflectance[sob:eob,ich] = np.squeeze(reflectance)
+            self.surf_reflectance[sob:eob,ich] = np.squeeze(surf_reflectance)
+            self.Q[sob:eob,ich] = np.squeeze(Q)
+            self.U[sob:eob,ich] = np.squeeze(U) 
+            self.BR_Q[sob:eob,ich] = np.squeeze(BR_Q)
+            self.BR_U[sob:eob,ich] = np.squeeze(BR_U)
+            self.TAU[:,sob:eob,:] = np.transpose(tau,[0,2,1])
+            self.SSA[:,sob:eob,:] = np.transpose(ssa,[0,2,1])
+            self.G[:,sob:eob,:] = np.transpose(self.g,[0,2,1])
+
     #---
-    def writeNC (self,ityme,zlib=True):
+    def writeNC (self,ich=None,empty=False):
         """
         Write a NetCDF file vlidort output
         """
 
-        if ityme == 0:
-            if not os.path.exists(os.path.dirname(self.outFile)):
-                os.makedirs(os.path.dirname(self.outFile))
+        if not os.path.exists(os.path.dirname(self.outFile)):
+            os.makedirs(os.path.dirname(self.outFile))
 
-            # Open NC file
-            # ------------
-            nc = Dataset(self.outFile,'w',format='NETCDF4_CLASSIC')
-
-            # Set global attributes
-            # ---------------------
-            nc.title = 'VLIDORT-GEOS-SBG Simulator'
-            nc.institution = 'NASA/Goddard Space Flight Center'
-            nc.source = 'Global Model and Assimilation Office'
-            nc.history = 'VLIDORT simulation run on sampled GEOS'
-            nc.references = 'n/a'
-            nc.contact = 'Patricia Castellanos <patricia.castellanos@nasa.gov>'
-            nc.Conventions = 'CF'
-            nc.inFile = self.inFile
-         
-            # Create dimensions
-            # -----------------
-            nt = nc.createDimension('time',self.ntyme)
-            nz = nc.createDimension('lev',self.nlev)
-            nh = nc.createDimension('ch',self.nch)
-            nx = nc.createDimension('across',self.nacross)
-
-            # Coordinate variables
-            # --------------------
-            col = 'aer_Nv'
-            if self.verbose: 
-                print('opening file',self.inFile.replace('%col',col))
-            nctrj       = Dataset(self.inFile.replace('%col',col))        
-            _copyVar(nctrj,nc,'trjLon',dtype='f4',zlib=False,verbose=self.verbose)
-            _copyVar(nctrj,nc,'trjLat',dtype='f4',zlib=False,verbose=self.verbose)
-            _copyVar(nctrj,nc,'time', dtype='i4',zlib=False,verbose=self.verbose)
-            _copyVar(nctrj,nc,'lev', dtype='f4',zlib=False,verbose=self.verbose)
-            nctrj.close()
-
+        # create xarray data arrays of outputs
+        # ------------------------------------
+        if ich is not None:
+            nch = 1
+            channels = self.channels[ich]
+            chcoord = [ich]
         else:
-            # Open NC file
-            # ------------
-            nc = Dataset(self.outFile,'a')            
+            nch = self.nch
+            channels = self.channels 
+            chcoord = np.arange(nch)
 
-        # Write VLIDORT Outputs
-        # ---------------------
-        if ityme == 0:
-            dim = ('time','across','ch')
-            ref = nc.createVariable('toa_reflectance','f4',dim,zlib=zlib,fill_value=MISSING)
-            ref.standard_name = 'TOA Reflectance' 
-            ref.long_name     = 'reflectance at the top of the atmosphere' 
-            ref.missing_value = MISSING
-            ref.units         = "None"
+        # use an input file to set dims and coords
+        col = 'aer_Nv'
+        dsaer = xr.open_dataset(self.inFile.replace('%col',col))
+
+        # Define variable attributes
+        toa_att = dict(
+                    standard_name="TOA Reflectance",
+                    long_name="reflectance at the top of the atmosphere",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        I_att = dict(
+                    standard_name="TOA I",
+                    long_name="intensity at the top of the atmosphere",
+                    units="W m-2 sr-1 nm-1",
+                    missing_value=MISSING,
+                    )
+        Q_att = dict(
+                    standard_name="TOA Q",
+                    long_name="Q-component of the stokes vector at the top of the atmopshere",
+                    units="W m-2 sr-1 nm-1",
+                    missing_value=MISSING,
+                    )
+
+        U_att = dict(
+                    standard_name="TOA U",
+                    long_name="U-component of the stokes vector at the top of the atmopshere",
+                    units="W m-2 sr-1 nm-1",
+                    missing_value=MISSING,
+                    )
+
+        sref_att = dict(
+                    standard_name="Surface Reflectance",
+                    long_name="Bi-Directional Surface Reflectance",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+        srefq_att = dict(
+                    standard_name="Surface Reflectance Q",
+                    long_name="Bi-Directional Surface Reflectance Q",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        srefu_att = dict(
+                    standard_name="Surface Reflectance U",
+                    long_name="Bi-Directional Surface Reflectance U",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        depol_att = dict(
+                    standard_name="depolarization ratio",
+                    long_name="Rayleigh depolarization ratio",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        rot_att = dict(
+                    standard_name="Rayleigh optical thickness",
+                    long_name="Rayleigh optical thickness",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        ch_att = dict(
+                    standard_name="wavelength",
+                    long_name="wavelength",
+                    units="nm",
+                    missing_value=MISSING,
+                    )
+
+        aot_att = dict(
+                    standard_name="Aerosol Optical Thickness",
+                    long_name="Aerosol Optical Thickness",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        ssa_att = dict(
+                    standard_name="Aerosol Single Scattering Albedo",
+                    long_name="Aerosol Single Scattering Albedo",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        g_att = dict(
+                    standard_name="Aerosol Assymetry Parameter",
+                    long_name="Aerosol Assymetry Parameter",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        # Create dataset
+        ds = xr.Dataset(
+            data_vars=dict(
+                longitude=(['time','across'],dsaer['longitude'].squeeze().values,dsaer['longitude'].attrs),
+                latitude=(['time','across'],dsaer['latitude'].squeeze().values,dsaer['latitude'].attrs),
+                wavelength=(['ch'],channels,ch_att),
+            ),
+            coords=dict(
+                time=dsaer['time'],
+                lev=dsaer['lev'],
+                across=np.arange(self.nacross),
+                ch=chcoord,
+            ),
+            attrs=dict(
+                title='VLIDORT-GEOS-SBG Simulator',
+                institution = 'NASA/Goddard Space Flight Center',
+                source = 'Global Model and Assimilation Office',
+                history = 'VLIDORT simulation run on sampled GEOS',
+                references = 'n/a',
+                contact = 'Patricia Castellanos <patricia.castellanos@nasa.gov>',
+                Conventions = 'CF',
+                inFile = self.inFile,
+                ),
+        )
+
+        # Add 2-D Variables
+        dims = ["time", "across", "ch"]
+        coords = dict(
+                time=dsaer['time'],
+                across=np.arange(self.nacross),
+                ch=chcoord,
+            )
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.reflectance
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=toa_att)
+        ds['toa_reflectance'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.I
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=I_att)
+        ds['I'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.Q
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=Q_att)
+        ds['Q'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.U
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=U_att)
+        ds['U'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.surf_reflectance
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=sref_att)
+        ds['surf_reflectance'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.BR_Q
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=srefq_att)
+        ds['surf_reflectance_Q'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.BR_U
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=srefu_att)
+        ds['surf_reflectance_U'] = da
+
+        temp = np.ones([self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[self.iGood,:] = self.depol_ratio[:]
+        da = xr.DataArray(temp.reshape([self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=depol_att)
+        ds['depol_ratio'] = da
+
+        # Add 3-D varaibles
+        dims = ["lev","time", "across", "ch"]
+        coords=dict(
+                time=dsaer['time'],
+                lev=dsaer['lev'],
+                across=np.arange(self.nacross),
+                ch=chcoord,
+            )
+
+        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[:,self.iGood,:] = self.ROT
+        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=rot_att)
+        ds['ROT'] = da
+
+        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[:,self.iGood,:] = self.TAU
+        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=aot_att)
+        ds['TAU'] = da
+
+        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[:,self.iGood,:] = self.SSA
+        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=ssa_att)
+        ds['SSA'] = da
+
+        temp = np.ones([self.nlev,self.ntyme*self.nacross,nch])*MISSING
+        if not empty:
+            temp[:,self.iGood,:] = self.G
+        da = xr.DataArray(temp.reshape([self.nlev,self.ntyme,self.nacross,nch]),dims=dims,coords=coords,attrs=g_att)
+        ds['G'] = da
+
+        # Write netcdf file
+        encoding = dict(
+            longitude={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            latitude={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            toa_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            I={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            Q={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            U={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            surf_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            surf_reflectance_Q={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            surf_reflectance_U={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            depol_ratio={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            ROT={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            TAU={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            SSA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            G={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            )
+
+        if (ich == 0) or (ich is None):
+            mode='w'
         else:
-            ref = nc.variables['toa_reflectance']
-        ref[ityme,:,:]            = self.reflectance
-
-        if ityme == 0:
-            i = nc.createVariable('I','f4',dim,zlib=zlib,fill_value=MISSING)
-            i.standard_name = 'TOA I' 
-            i.long_name     = 'intensity at the top of the atmosphere' 
-            i.missing_value = MISSING
-            i.units         = "W m-2 sr-1 nm-1"
-        else:
-            i = nc.variables['I']
-        i[ityme,:,:]            = self.I
-
-        if ityme == 0:
-            q = nc.createVariable('Q','f4',dim,zlib=zlib,fill_value=MISSING)
-            q.standard_name = 'TOA Q' 
-            q.long_name     = 'Q-component of the stokes vector at the top of the atmopshere' 
-            q.missing_value = MISSING
-            q.units         = "W m-2 sr-1 nm-1"
-        else:
-            q = nc.variables['Q']
-        q[ityme,:,:]            = self.Q    
-
-        if ityme == 0:
-            u = nc.createVariable('U','f4',dim,zlib=zlib,fill_value=MISSING)
-            u.standard_name = 'TOA U'
-            u.long_name     = 'U-component of the stokes vector at the top of the atmopshere' 
-            u.missing_value = MISSING
-            u.units         = "W m-2 sr-1 nm-1"
-        else:
-            u = nc.variables['U']
-        u[ityme,:,:]            = self.U
-
-        if ityme == 0:
-            sref = nc.createVariable('surf_reflectance','f4',dim,zlib=zlib,fill_value=MISSING)
-            sref.standard_name = 'Surface Reflectance' 
-            sref.long_name     = 'Bi-Directional Surface Reflectance' 
-            sref.missing_value = MISSING
-            sref.units         = "None"
-        else:
-            sref = nc.variables['surf_reflectance']
-        sref[ityme,:,:]            = self.surf_reflectance
-
-        if ityme == 0:
-            sref = nc.createVariable('surf_reflectance_Q','f4',dim,zlib=zlib,fill_value=MISSING)
-            sref.standard_name = 'Surface Reflectance Q' 
-            sref.long_name     = 'Bi-Directional Surface Reflectance Q'
-            sref.missing_value = MISSING
-            sref.units         = "None"
-        else:
-            sref = nc.variables['surf_reflectance_Q']
-        sref[ityme,:,:]            = self.BR_Q
-
-        if ityme == 0:
-            sref = nc.createVariable('surf_reflectance_U','f4',dim,zlib=zlib,fill_value=MISSING)
-            sref.standard_name = 'Surface Reflectance U' 
-            sref.long_name     = 'Bi-Directional Surface Reflectance U' 
-            sref.missing_value = MISSING
-            sref.units         = "None"
-        else:
-            sref = nc.variables['surf_reflectance_U']
-        sref[ityme,:,:]            = self.BR_U
-
-        if ityme == 0:
-            rot = nc.createVariable('ROT','f4',('time','lev','across','ch',),zlib=zlib,fill_value=MISSING)
-            rot.long_name = 'Rayleigh Optical Thickness'
-            rot.missing_value = MISSING
-            rot.units         = "None"
-        else:
-            rot = nc.variables['ROT']
-        rot[ityme,:,:,:]            = self.ROT
-
-        # Close the file
-        # --------------
-        nc.close()
+            mode='a'
+        ds.to_netcdf(path=self.outFile,format='NETCDF4',engine='netcdf4',encoding=encoding,unlimited_dims=['ch'],mode=mode)
 
         if self.verbose:
-            print(" <> wrote %s %d %d"%(self.outFile,ityme,self.ntyme))
-
+            print(" <> wrote %d %s "%(ich,self.outFile))
+ 
 #------------------------------------ M A I N ------------------------------------
 
 if __name__ == "__main__":
 
     # Defaults
-    DT_hours   = 1
+    DT_mins   = 1
     mtFile     = 'm2_aop.yaml'
     albedoType = None
+    nproc      = 125
 
 #   Parse command line options
 #   --------------------------
@@ -545,8 +701,11 @@ if __name__ == "__main__":
     parser.add_argument("--mtFile",default=mtFile,
                         help="mtFile (default=%s)"%mtFile)
 
-    parser.add_argument("-D","--DT_hours", default=DT_hours, type=int,
-                        help="Timestep in hours for each file (default=%i)"%DT_hours)
+    parser.add_argument("-D","--DT_mins", default=DT_mins, type=int,
+                        help="Timestep in minutes for each file (default=%i)"%DT_mins)
+
+    parser.add_argument("-n","--nproc", default=nproc, type=int,
+                        help="Number of processors to use (default=%i)"%nproc)
 
     parser.add_argument("-v", "--verbose",action="store_true",
                         help="Verbose mode (default=False).")
@@ -594,7 +753,7 @@ if __name__ == "__main__":
     # ------------------------------------
     date      = isoparser(args.iso_t1)
     enddate   = isoparser(args.iso_t2)
-    Dt        = timedelta(hours=args.DT_hours)
+    Dt        = timedelta(minutes=args.DT_mins)
 
     while date < enddate:
         nymd  = str(date.date()).replace('-','')
@@ -623,6 +782,7 @@ if __name__ == "__main__":
         print('>>>albedoType:',albedoType)
         print('>>>brdfFile:  ',brdfFile)
         print('>>>verbose:   ',args.verbose)
+        print('>>>nproc:     ',args.nproc)
         print('++++End of arguments+++')
         
         vlidort = SBG_VLIDORT(inFile,outFile,mtFile,
@@ -631,7 +791,8 @@ if __name__ == "__main__":
                             args.dryrun,
                             brdfFile=brdfFile,
                             verbose=args.verbose,
-                            do_vlidort=do_vlidort)
+                            do_vlidort=do_vlidort,
+                            nproc=args.nproc)
 
 
         date += Dt
