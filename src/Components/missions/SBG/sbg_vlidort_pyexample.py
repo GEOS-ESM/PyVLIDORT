@@ -128,7 +128,7 @@ class SBG_VLIDORT(VLIDORT,INPUTS_VLIDORT):
                 self.LandSeaMask(ityme)       
 
                 # Get pool of processors
-                if do_vlidort:
+                if not dryrun and do_vlidort:
                     p = Pool(120)
 
                 if not dryrun:
@@ -150,7 +150,7 @@ class SBG_VLIDORT(VLIDORT,INPUTS_VLIDORT):
                         self.writeNC(ich,ityme)
      
                 # close pool of processors
-                if do_vlidort:
+                if not dryrun and do_vlidort:
                     p.close()
 
     #--
@@ -523,7 +523,7 @@ if __name__ == "__main__":
 
     # Defaults
     DT_hours   = 1
-    rcFile     = 'm2_aop.yaml'
+    mtFile     = 'm2_aop.yaml'
     albedoType = None
 
 #   Parse command line options
@@ -541,12 +541,11 @@ if __name__ == "__main__":
     parser.add_argument("-a","--albedotype", default=albedoType,
                         help="albedo type keyword. default is to figure out according to channel")
 
-    parser.add_argument("--rcfile",default=rcFile,
-                        help="rcFile (default=%s)"%rcFile)
+    parser.add_argument("--mtFile",default=mtFile,
+                        help="mtFile (default=%s)"%mtFile)
 
     parser.add_argument("-D","--DT_hours", default=DT_hours, type=int,
                         help="Timestep in hours for each file (default=%i)"%DT_hours)
-
 
     parser.add_argument("-v", "--verbose",action="store_true",
                         help="Verbose mode (default=False).")
@@ -554,16 +553,20 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--dryrun",action="store_true",
                         help="do a dry run (default=False).")
 
+    parser.add_argument("--novlidort",action="store_true",
+                        help="don't do vlidort calc, aops only (default=False).")
+
     args = parser.parse_args()
-    rcFile         = args.rcfile
+    mtFile         = args.mtFile
     albedoType     = args.albedotype
+    do_vlidort     = not args.novlidort
 
     # figure out albedoType keyword
     if albedoType is None:
         albedoType = 'AMES_BRDF'
 
 
-    configs = yaml.safe_load(open(args.inputs_yaml))
+    config = yaml.safe_load(open(args.inputs_yaml))
     args.paths_yaml = config['paths_yaml']
     args.inst_yaml  = config['inst_yaml']
     args.orbit_yaml = config['orbit_yaml']
@@ -621,12 +624,13 @@ if __name__ == "__main__":
         print('>>>verbose:   ',args.verbose)
         print('++++End of arguments+++')
         
-#        vlidort = ACCP_POLAR_VLIDORT(inFile,outFile,rcFile,
-#                            albedoType, 
-#                            instname,
-#                            args.dryrun,
-#                            brdfFile=brdfFile,
-#                            verbose=args.verbose)
+        vlidort = SBG_VLIDORT(inFile,outFile,mtFile,
+                            albedoType, 
+                            instname,
+                            args.dryrun,
+                            brdfFile=brdfFile,
+                            verbose=args.verbose,
+                            do_vlidort=do_vlidort)
 
 
         date += Dt
