@@ -20,7 +20,7 @@ import yaml
 from pyobs.constants import MAPL_GRAV as GRAV
 from pyobs.constants import MAPL_RDRY as RGAS
 from pyobs.constants import MAPL_KAPPA as KAPPA
-from py_leo_vlidort.vlidort import WrapperFuncs
+from py_vlidort.vlidort import WrapperFuncs
 
 
 class INPUTS_VLIDORT(G2GAOP):
