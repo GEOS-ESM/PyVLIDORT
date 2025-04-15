@@ -1,6 +1,6 @@
 esma_set_this ()
 
-set (src_dirs .)
+set (src_dirs 2stream_sourcecode)
 #set (srcs LIDORT_Mod.F90 LIDORT_SurfaceMod.F90 LIDORT_ScatMod.F90)
 foreach (dir ${src_dirs})
     file (GLOB srcs_ CONFIGURE_DEPENDS ${dir}/*.[Ffc] ${dir}/*.[fF]90)
