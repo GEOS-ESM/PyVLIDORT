@@ -1,0 +1,2446 @@
+! ###########################################################
+! #                                                         #
+! #             THE TWOSTREAM LIDORT MODEL                  #
+! #                                                         #
+! #      (LInearized Discrete Ordinate Radiative Transfer)  #
+! #       --         -        -        -         -          #
+! #                                                         #
+! ###########################################################
+
+! ###########################################################
+! #                                                         #
+! #  Authors :      Robert. J. D. Spurr (1)                 #
+! #                 Vijay Natraj        (2)                 #
+! #                                                         #
+! #  Address (1) :     RT Solutions, Inc.                   #
+! #                    9 Channing Street                    #
+! #                    Cambridge, MA 02138, USA             #
+! #  Tel:             (617) 492 1183                        #
+! #  Email :           rtsolutions@verizon.net              #
+! #                                                         #
+! #  Address (2) :     CalTech                              #
+! #                    Department of Planetary Sciences     #
+! #                    1200 East California Boulevard       #
+! #                    Pasadena, CA 91125                   #
+! #  Tel:             (626) 395 6962                        #
+! #  Email :           vijay@gps.caltech.edu                #
+! #                                                         #
+! #  Version 1.0-1.3 :                                      #
+! #     Mark 1: October  2010                               #
+! #     Mark 2: May      2011, with BRDFs                   #
+! #     Mark 3: October  2011, with Thermal sources         #
+! #                                                         #
+! #  Version 2.0-2.1 :                                      #
+! #     Mark 4: November 2012, LCS/LPS Split, Fixed Arrays  #
+! #     Mark 5: December 2012, Observation Geometry option  #
+! #                                                         #
+! #  Version 2.2-2.3 :                                      #
+! #     Mark 6: July     2013, Level outputs + control      #
+! #     Mark 7: December 2013, Flux outputs  + control      #
+! #                                                         #
+! ###########################################################
+
+! #############################################################
+! #                                                           #
+! #   This Version of LIDORT-2STREAM comes with a GNU-style   #
+! #   license. Please read the license carefully.             #
+! #                                                           #
+! #############################################################
+
+! ###############################################################
+! #                                                             #
+! # Subroutines in this Module                                  #
+! #                                                             #
+! #            TWOSTREAM_LPS_MASTER (top-level master)          #
+! #            TWOSTREAM_LPS_FOURIER_MASTER                     #
+! #                                                             #
+! ###############################################################
+
+module twostream_lps_master_m
+
+Use twostream_miscsetups_m
+Use twostream_solutions_m
+Use twostream_bvproblem_m
+Use twostream_intensity_m
+Use twostream_thermalsup_m
+
+Use twostream_lp_miscsetups_m
+Use twostream_la_solutions_m
+Use twostream_lp_solutions_m
+Use twostream_lp_bvproblem_m
+Use twostream_ls_bvproblem_m
+Use twostream_lp_jacobians_m
+Use twostream_ls_jacobians_m
+
+Use twostream_thermalsup_plus_m
+
+PUBLIC
+
+contains
+
+SUBROUTINE TWOSTREAM_LPS_MASTER &
+        ( MAXLAYERS, MAXTOTAL, MAXTHREADS, MAXMESSAGES,                    & ! Dimensions
+          MAX_ATMOSWFS, MAX_SURFACEWFS,                                    & ! Dimensions
+          MAXBEAMS, MAX_USER_STREAMS, MAX_USER_RELAZMS,                    & ! Dimensions
+          MAX_GEOMETRIES, MAX_USER_OBSGEOMS,                               & ! Dimensions !@@ 2p1
+          DO_UPWELLING, DO_DNWELLING, DO_PLANE_PARALLEL, DO_2S_LEVELOUT,   & ! Inputs     !@@ 2p2
+          DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT,                              & ! Inputs     !@@ 2p3
+          DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,      & ! Inputs
+          DO_D2S_SCALING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,               & ! Inputs     !@@ 2p1
+          THREAD, NLAYERS, NTOTAL, STREAM_VALUE,                           & ! Inputs
+          N_USER_OBSGEOMS, USER_OBSGEOMS,                                  & ! Inputs     !@@ 2p1
+          N_USER_STREAMS, USER_ANGLES, N_USER_RELAZMS, USER_RELAZMS,       & ! Inputs
+          FLUX_FACTOR, NBEAMS, BEAM_SZAS, EARTH_RADIUS, HEIGHT_GRID,       & ! Inputs
+          DELTAU_INPUT, OMEGA_INPUT, ASYMM_INPUT, D2S_SCALING,             & ! Inputs
+          THERMAL_BB_INPUT, LAMBERTIAN_ALBEDO, BRDF_F_0, BRDF_F, UBRDF_F,  & ! Inputs
+          EMISSIVITY, SURFBB,                                              & ! Inputs
+          DO_SIM_ONLY, DO_SURFACE_WFS,                                     & ! Inputs
+          LAYER_VARY_FLAG, LAYER_VARY_NUMBER, N_SURFACE_WFS,               & ! Inputs
+          L_DELTAU_INPUT, L_OMEGA_INPUT, L_ASYMM_INPUT, L_D2S_SCALING,     & ! Inputs
+          LS_BRDF_F_0, LS_BRDF_F, LS_UBRDF_F, LS_EMISSIVITY,               & ! Inputs
+          INTENSITY_TOA, PROFILEWF_TOA, SURFACEWF_TOA,                     & ! In/Out
+          INTENSITY_BOA, PROFILEWF_BOA, SURFACEWF_BOA,                     & ! In/Out
+          RADLEVEL_UP, RADLEVEL_DN,  N_GEOMETRIES,                         & ! Outputs !@@ 2p2
+          PROFJACLEVEL_UP,PROFJACLEVEL_DN,SURFJACLEVEL_UP,SURFJACLEVEL_DN, & ! Outputs !@@ 2p2
+          FLUXES_TOA, PROFJACFLUXES_TOA, SURFJACFLUXES_TOA,                & ! Outputs !@@ 2p3
+          FLUXES_BOA, PROFJACFLUXES_BOA, SURFJACFLUXES_BOA,                & ! Outputs !@@ 2p3
+          STATUS_INPUTCHECK, C_NMESSAGES, C_MESSAGES, C_ACTIONS,           & ! Exception handling
+          STATUS_EXECUTION,  E_MESSAGE, E_TRACE_1, E_TRACE_2 )               ! Exception handling
+
+      implicit none
+
+!  precision
+
+      INTEGER, PARAMETER :: dp     = KIND( 1.0D0 )
+
+!  Notes 21 december 2012. Observational Geometry Inputs. Marked with !@@ 2p1
+
+!     Observation-Geometry New dimensioning.    MAX_USER_OBSGEOMS
+!     Observation-Geometry input control.       DO_USER_OBSGEOMS
+!     Observation-Geometry input control.       N_USER_OBSGEOMS
+!     User-defined Observation Geometry angles. USER_OBSGEOMS
+
+!  Notes 17 July 2013, Optional output at all levels. Marked with !@@ 2p2
+
+!      New flag for input : DO_2S_LEVELOUT
+
+!  Notes 05 November 2013. Flux output options. Two New Flags
+!   DO_MVOUT_ONLY
+!   DO_ADDITIONAL_MVOUT
+
+!  subroutine input arguments
+!  --------------------------
+
+!  Dimensions :
+!      MAXTOTAL       = 2 * MAXLAYERS
+!      MAX_GEOMETRIES = MAXBEAMS * MAX_USER_STREAMS * MAX_USER_RELAZMS
+!      !@@ MAX_USER_OBSGEOMS >/= MAXBEAMS
+
+      INTEGER, INTENT(IN)        :: MAXTHREADS, MAXMESSAGES
+      INTEGER, INTENT(IN)        :: MAXLAYERS, MAXTOTAL
+      INTEGER, INTENT(IN)        :: MAXBEAMS, MAX_GEOMETRIES, MAX_USER_OBSGEOMS  !@@
+      INTEGER, INTENT(IN)        :: MAX_USER_STREAMS, MAX_USER_RELAZMS
+      INTEGER, INTENT(IN)        :: MAX_ATMOSWFS, MAX_SURFACEWFS
+
+!  Directional Flags
+
+      LOGICAL, INTENT(IN)        :: DO_UPWELLING, DO_DNWELLING
+
+!  MS-only flag (Mode of operation). NOT REQUIRED
+!    IF set, only calculating  MS field
+!      LOGICAL, INTENT(IN)        :: DO_MSMODE_2STREAM
+
+!  Plane parallel flag
+
+      LOGICAL, INTENT(IN)        :: DO_PLANE_PARALLEL
+
+!  @@ Rob Spurr, 17 July 2013, Version 2.2, Levelout flag
+
+      LOGICAL, INTENT(IN)        :: DO_2S_LEVELOUT     ! @@ 2p2
+
+!  @@ Rob Spurr, 05 November 2013, Version 2.3, Flux option flags
+
+      LOGICAL, INTENT(IN)        :: DO_MVOUT_ONLY       ! @@ 2p3
+      LOGICAL, INTENT(IN)        :: DO_ADDITIONAL_MVOUT ! @@ 2p3
+
+!  ** New **. October 2011, Sources control, including thermal
+
+      LOGICAL, INTENT(IN)        :: DO_SOLAR_SOURCES
+      LOGICAL, INTENT(IN)        :: DO_THERMAL_EMISSION
+      LOGICAL, INTENT(IN)        :: DO_SURFACE_EMISSION
+
+!  Deltam-2stream scaling flag
+
+      LOGICAL, INTENT(IN)        :: DO_D2S_SCALING
+
+!  BRDF surface flag
+
+      LOGICAL, INTENT(IN)        :: DO_BRDF_SURFACE
+
+!  Observational Geometry flag !@@ 2p1
+
+      LOGICAL, INTENT(IN)        :: DO_USER_OBSGEOMS !@@ 2p1
+
+!  Input thread
+
+      INTEGER, INTENT(IN)        :: THREAD
+
+!  Numbers (basic), NTOTAL = 2 * NLAYERS
+
+      INTEGER, INTENT(IN)        :: NLAYERS, NTOTAL
+
+!  Stream value
+
+      REAL(kind=dp), INTENT(IN)  :: STREAM_VALUE
+
+!  Observational geometry input. [Same as LIDORT]. New 12/21/12 !@@ 2p1
+
+      INTEGER, INTENT(IN)        :: N_USER_OBSGEOMS                    !@@ 2p1
+      REAL(kind=dp), INTENT(IN)  :: USER_OBSGEOMS(MAX_USER_OBSGEOMS,3) !@@ 2p1
+
+!  Viewing geometry. [Now Intent(inout), thanks to option for ObsGeom !@@ 2p1
+
+      INTEGER, INTENT(INOUT)        :: N_USER_STREAMS
+      REAL(kind=dp), INTENT(INOUT)  :: USER_ANGLES  ( MAX_USER_STREAMS )
+      INTEGER, INTENT(INOUT)        :: N_USER_RELAZMS
+      REAL(kind=dp), INTENT(INOUT)  :: USER_RELAZMS ( MAX_USER_RELAZMS )
+
+!  Flux factor
+
+      REAL(kind=dp), INTENT(IN)  :: FLUX_FACTOR
+
+!  Solar geometry. [Now Intent(inout), thanks to option for ObsGeom !@@ 2p1
+
+      INTEGER, INTENT(INOUT)        :: NBEAMS
+      REAL(kind=dp), INTENT(INOUT)  :: BEAM_SZAS ( MAXBEAMS )
+
+!  Height and earth radius (latter could be re-set internally)
+
+      REAL(kind=dp), INTENT(INOUT) :: EARTH_RADIUS
+      REAL(kind=dp), INTENT(IN)    :: HEIGHT_GRID ( 0:MAXLAYERS )
+
+!  Geometry specification height
+!      REAL(kind=dp), INTENT(IN)  :: GEOMETRY_SPECHEIGHT
+
+!  Atmospheric optical properties
+
+      REAL(kind=dp), INTENT(IN)  :: DELTAU_INPUT(MAXLAYERS, MAXTHREADS)
+      REAL(kind=dp), INTENT(IN)  :: OMEGA_INPUT (MAXLAYERS, MAXTHREADS)
+      REAL(kind=dp), INTENT(IN)  :: ASYMM_INPUT (MAXLAYERS, MAXTHREADS)
+      REAL(kind=dp), INTENT(IN)  :: D2S_SCALING (MAXLAYERS, MAXTHREADS)
+
+!  Atmospheric thermal sources
+
+      REAL(kind=dp), INTENT(IN)  :: THERMAL_BB_INPUT ( 0:MAXLAYERS )
+
+!  Lambertian surface control (threaded)
+
+      REAL(kind=dp), INTENT(IN)  :: LAMBERTIAN_ALBEDO (MAXTHREADS)
+
+!  BRDF fourier components
+!  0 and 1 Fourier components of BRDF, following order (same all threads)
+!    incident solar directions,  reflected quadrature stream
+!    incident quadrature stream, reflected quadrature stream
+!    incident solar directions,  reflected user streams    !  NOT REQUIRED
+!    incident quadrature stream, reflected user streams
+
+      REAL(kind=dp), INTENT(IN)  :: BRDF_F_0  ( 0:1, MAXBEAMS )
+      REAL(kind=dp), INTENT(IN)  :: BRDF_F    ( 0:1 )
+!      REAL(kind=dp), INTENT(IN)  :: UBRDF_F_0 ( 0:1, MAX_USER_STREAMS, MAXBEAMS )
+      REAL(kind=dp), INTENT(IN)  :: UBRDF_F   ( 0:1, MAX_USER_STREAMS )
+
+!  Surface thermal sources
+
+      REAL(kind=dp), INTENT(IN)  :: EMISSIVITY
+      REAL(kind=dp), INTENT(IN)  :: SURFBB
+
+!  Linearization flags
+
+      LOGICAL, INTENT(IN)        :: DO_SIM_ONLY
+      LOGICAL, INTENT(IN)        :: DO_SURFACE_WFS
+
+!  Jacobian (linearization) control
+
+      LOGICAL, INTENT(IN)        :: LAYER_VARY_FLAG   ( MAXLAYERS )
+      INTEGER, INTENT(IN)        :: LAYER_VARY_NUMBER ( MAXLAYERS )
+      INTEGER, INTENT(IN)        :: N_SURFACE_WFS
+
+!  Linearized optical properties
+
+      REAL(kind=dp), INTENT(IN)  :: L_DELTAU_INPUT(MAXLAYERS, MAX_ATMOSWFS, MAXTHREADS)
+      REAL(kind=dp), INTENT(IN)  :: L_OMEGA_INPUT (MAXLAYERS, MAX_ATMOSWFS, MAXTHREADS)
+      REAL(kind=dp), INTENT(IN)  :: L_ASYMM_INPUT (MAXLAYERS, MAX_ATMOSWFS, MAXTHREADS)
+      REAL(kind=dp), INTENT(IN)  :: L_D2S_SCALING (MAXLAYERS, MAX_ATMOSWFS, MAXTHREADS)
+
+!  Linearized BRDF fourier components
+!  0 and 1 Fourier components of BRDF, following order (same all threads)
+!    incident solar directions,  reflected quadrature stream
+!    incident quadrature stream, reflected quadrature stream
+!    incident quadrature stream, reflected user streams
+
+      REAL(kind=dp), INTENT(IN)  :: LS_BRDF_F_0  (MAX_SURFACEWFS,0:1,MAXBEAMS)
+      REAL(kind=dp), INTENT(IN)  :: LS_BRDF_F    (MAX_SURFACEWFS,0:1)
+      REAL(kind=dp), INTENT(IN)  :: LS_UBRDF_F   (MAX_SURFACEWFS,0:1,MAX_USER_STREAMS)
+
+!  Linearized surface thermal properties
+
+      REAL(kind=dp), INTENT(IN)  :: LS_EMISSIVITY ( MAX_SURFACEWFS )
+
+!  Output
+!  ======
+
+!  Results
+!  -------
+
+      REAL(kind=dp), INTENT(INOUT) :: INTENSITY_TOA(MAX_GEOMETRIES,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: INTENSITY_BOA(MAX_GEOMETRIES,MAXTHREADS)
+
+      REAL(kind=dp), INTENT(INOUT) :: PROFILEWF_TOA(MAX_GEOMETRIES,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: PROFILEWF_BOA(MAX_GEOMETRIES,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+
+      REAL(kind=dp), INTENT(INOUT) :: SURFACEWF_TOA(MAX_GEOMETRIES,MAX_SURFACEWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: SURFACEWF_BOA(MAX_GEOMETRIES,MAX_SURFACEWFS,MAXTHREADS)
+
+!  output solutions at ALL levels
+!     ! @@ Rob Spurr, 17 July 2013, Version 2.2 --> Optional Output at ALL LEVELS
+
+      REAL(kind=dp), INTENT(INOUT) :: RADLEVEL_UP (MAX_GEOMETRIES,0:MAXLAYERS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: RADLEVEL_DN (MAX_GEOMETRIES,0:MAXLAYERS,MAXTHREADS)
+
+      REAL(kind=dp), INTENT(INOUT) :: PROFJACLEVEL_UP (MAX_GEOMETRIES,0:MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: PROFJACLEVEL_DN (MAX_GEOMETRIES,0:MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+
+      REAL(kind=dp), INTENT(INOUT) :: SURFJACLEVEL_UP (MAX_GEOMETRIES,0:MAXLAYERS,MAX_SURFACEWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: SURFJACLEVEL_DN (MAX_GEOMETRIES,0:MAXLAYERS,MAX_SURFACEWFS,MAXTHREADS)
+
+!  Flux output
+!     ! @@ Rob Spurr, 05 November 2013, Version 2.3 --> Flux Output
+
+      REAL(kind=dp), INTENT(INOUT) :: FLUXES_TOA(MAXBEAMS,2,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: FLUXES_BOA(MAXBEAMS,2,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: PROFJACFLUXES_TOA (MAXBEAMS,2,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: PROFJACFLUXES_BOA (MAXBEAMS,2,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: SURFJACFLUXES_TOA (MAXBEAMS,2,MAX_SURFACEWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: SURFJACFLUXES_BOA (MAXBEAMS,2,MAX_SURFACEWFS,MAXTHREADS)
+
+!  Numbers (geometry)
+!   N_GEOMETRIES = NBEAMS * N_USER_STREAMS * N_USER_RELAZMS (Lattice value)
+!   N_GEOMETRIES = N_USER_OBSGEOMS                          (OBsGeom value)
+
+      INTEGER, INTENT(INOUT)        :: N_GEOMETRIES
+
+!  Exception handling
+!  ------------------
+
+!    1. Up to 100 Check Messages and actions
+
+      INTEGER      , INTENT(OUT) :: STATUS_INPUTCHECK
+      INTEGER      , INTENT(OUT) :: C_NMESSAGES
+      CHARACTER*100, INTENT(OUT) :: C_MESSAGES(MAXMESSAGES)
+      CHARACTER*100, INTENT(OUT) :: C_ACTIONS (MAXMESSAGES)
+
+!    2. Execution message and 2 Traces
+
+      INTEGER      , INTENT(OUT) :: STATUS_EXECUTION
+      CHARACTER*100, INTENT(OUT) :: E_MESSAGE, E_TRACE_1, E_TRACE_2
+
+!  Local definitions
+!  =================
+
+!  Local Atmospheric Optical properties
+!  ------------------------------------
+
+!  After application of deltam scaling
+
+
+      REAL(kind=dp) :: DELTAU_VERT(MAXLAYERS)
+      REAL(kind=dp) :: OMEGA_TOTAL(MAXLAYERS)
+      REAL(kind=dp) :: ASYMM_TOTAL(MAXLAYERS)
+
+!  Local Linearized Optical properties
+
+      REAL(kind=dp) :: L_DELTAU_VERT(MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) :: L_OMEGA_TOTAL(MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) :: L_ASYMM_TOTAL(MAXLAYERS,MAX_ATMOSWFS)
+
+!  Chapman factors (from pseudo-spherical geometry)
+
+      REAL(kind=dp) :: CHAPMAN_FACTORS ( MAXLAYERS, MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp) :: LOCAL_SZA       ( 0:MAXLAYERS, MAXBEAMS )
+
+!     Last layer to include Particular integral solution
+!     Average-secant and initial tramsittance factors for solar beams.
+!     Solar beam attenuation
+
+      INTEGER       :: LAYER_PIS_CUTOFF ( MAXBEAMS )
+      REAL(kind=dp) :: INITIAL_TRANS    ( MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp) :: AVERAGE_SECANT   ( MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp) :: LOCAL_CSZA       ( MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp) :: SOLAR_BEAM_OPDEP ( MAXBEAMS )
+
+!  Derived optical thickness inputs
+
+      REAL(kind=dp) :: DELTAU_SLANT ( MAXLAYERS, MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp) :: TAUSLANT     ( 0:MAXLAYERS, MAXBEAMS )
+
+!  reflectance flags
+
+      LOGICAL       :: DO_DIRECTBEAM ( MAXBEAMS )
+
+!  Transmittance Setups
+!  --------------------
+
+!  Transmittance factors for average secant stream
+
+      REAL(kind=dp) :: T_DELT_MUBAR ( MAXLAYERS, MAXBEAMS )
+
+!  Transmittance factors for user-defined stream angles
+
+      REAL(kind=dp) :: T_DELT_USERM ( MAXLAYERS, MAX_USER_STREAMS )
+
+!  Linearized Average-secant and initial tramsittance factors
+
+      REAL(kind=dp) :: LP_INITIAL_TRANS  ( MAXLAYERS, MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS )
+      REAL(kind=dp) :: LP_AVERAGE_SECANT ( MAXLAYERS, MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS )
+
+!  Linearized Transmittance factors for average secant stream
+
+      REAL(kind=dp) :: LP_T_DELT_MUBAR ( MAXLAYERS, MAXBEAMS, MAXLAYERS,MAX_ATMOSWFS )
+
+!  Linearized Transmittance factors for user-defined stream angles
+
+      REAL(kind=dp) :: L_T_DELT_USERM ( MAXLAYERS, MAX_USER_STREAMS, MAX_ATMOSWFS )
+
+!  forcing term multipliers (saved for whole atmosphere)
+
+      REAL(kind=dp) :: EMULT_UP (MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS)
+      REAL(kind=dp) :: EMULT_DN (MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS)
+
+!  Linearized forcing term multipliers (saved for whole atmosphere)
+
+      REAL(kind=dp) :: LP_EMULT_UP(MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) :: LP_EMULT_DN(MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Fourier-component solutions
+
+      REAL(kind=dp) :: INTENSITY_F_UP (MAX_USER_STREAMS,MAXBEAMS)
+      REAL(kind=dp) :: INTENSITY_F_DN (MAX_USER_STREAMS,MAXBEAMS)
+
+!  Fourier-component solutions at ALL levels
+!     ! @@ Rob Spurr, 17 July 2013, Version 2.2 --> Optional Output at ALL LEVELS
+
+      REAL(kind=dp) :: RADLEVEL_F_UP (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS)
+      REAL(kind=dp) :: RADLEVEL_F_DN (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS)
+
+!  Fourier component Jacobian stuff
+
+      REAL(kind=dp) :: PROFILEWF_F_UP (MAX_USER_STREAMS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) :: PROFILEWF_F_DN (MAX_USER_STREAMS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+      REAL(kind=dp) :: SURFACEWF_F_UP(MAX_USER_STREAMS,MAXBEAMS,MAX_SURFACEWFS)
+      REAL(kind=dp) :: SURFACEWF_F_DN(MAX_USER_STREAMS,MAXBEAMS,MAX_SURFACEWFS)
+
+      REAL(kind=dp) :: PROFJACLEVEL_F_UP (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) :: PROFJACLEVEL_F_DN (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+
+      REAL(kind=dp) :: SURFJACLEVEL_F_UP (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAX_SURFACEWFS)
+      REAL(kind=dp) :: SURFJACLEVEL_F_DN (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAX_SURFACEWFS)
+
+!  Other local variables
+!  ---------------------
+
+      CHARACTER(LEN=3)  :: CF, WTHREAD
+      LOGICAL           :: DO_PROFILE_WFS
+      INTEGER           :: FOURIER, N_FOURIERS, STATUS_SUB
+      INTEGER           :: N, Q, UA, UM, IB, N_VIEWING, IBEAM, I, T, LUM, LUA
+      REAL(kind=dp)     :: AZM_ARGUMENT, DFC, DEG_TO_RAD, PI4, ALBEDO
+      REAL(kind=dp)     :: OMFAC, M1FAC, GDIFF, L_OMFAC, LW1, LW2
+
+!  Geometry offset arrays
+
+      INTEGER       :: IBOFF ( MAXBEAMS )
+      INTEGER       :: UMOFF ( MAXBEAMS, MAX_USER_STREAMS )
+
+!  Local azimuth factors
+
+      REAL(kind=dp) :: AZMFAC (MAX_USER_STREAMS,MAXBEAMS,MAX_USER_RELAZMS)
+
+!  Post-processing flag (new for Version 2p3)
+
+      LOGICAL       :: DO_POSTPROCESSING
+
+!  Cosines and sines
+
+      REAL(kind=dp) :: X0  ( MAXBEAMS )
+      REAL(kind=dp) :: USER_STREAMS ( MAX_USER_STREAMS )
+      REAL(kind=dp) :: MUSTREAM, SINSTREAM
+
+!mick - singularity buster output
+      LOGICAL       :: SBUST(6)
+
+!  Thread number
+!  -------------
+
+      WTHREAD = '000'
+      IF (THREAD.LT.10)WRITE(WTHREAD(3:3),'(I1)')THREAD
+      IF (THREAD.GT.99)WRITE(WTHREAD(1:3),'(I3)')THREAD
+      IF (THREAD.GE.10.and.THREAD.LE.99)WRITE(WTHREAD(2:3),'(I2)')THREAD
+      T = THREAD
+
+!  Local user indices; !@@ Only required for OBSGEOM option
+
+      LUM = 1
+      LUA = 1
+
+!  Initialize output arrays for current thread
+!  -------------------------------------------
+
+!mick fix 11/8/2012 - added main output
+!  Main output
+
+      INTENSITY_TOA(:,T) = 0.0d0
+      INTENSITY_BOA(:,T) = 0.0d0
+
+      PROFILEWF_TOA(:,:,:,T) = 0.0d0
+      PROFILEWF_BOA(:,:,:,T) = 0.0d0
+
+      SURFACEWF_TOA(:,:,T) = 0.0d0
+      SURFACEWF_BOA(:,:,T) = 0.0d0
+
+! @@ Rob Spurr, 17 July 2013, Version 2.2 --> Optional Output at ALL LEVELS
+
+      RADLEVEL_UP (:,:,T) = 0.0d0
+      RADLEVEL_DN (:,:,T) = 0.0d0
+
+      PROFJACLEVEL_UP (:,:,:,:,T) = 0.0d0
+      PROFJACLEVEL_DN (:,:,:,:,T) = 0.0d0
+
+      SURFJACLEVEL_UP (:,:,:,T) = 0.0d0
+      SURFJACLEVEL_DN (:,:,:,T) = 0.0d0
+
+! @@ Rob Spurr, 05 November 2013, Version 2.3 --> BOA_TOA Flux outputs
+
+      FLUXES_TOA(:,:,T) = 0.0d0
+      FLUXES_BOA(:,:,T) = 0.0d0
+
+      PROFJACFLUXES_TOA (:,:,:,:,T) = 0.0d0
+      PROFJACFLUXES_BOA (:,:,:,:,T) = 0.0d0
+
+      SURFJACFLUXES_TOA (:,:,:,T) = 0.0d0
+      SURFJACFLUXES_TOA (:,:,:,T) = 0.0d0
+
+!  Input check
+
+      STATUS_INPUTCHECK = 0
+      C_NMESSAGES       = 0
+
+!  Execution status and message/traces
+
+      STATUS_EXECUTION  = 0
+      E_MESSAGE = ' '
+      E_TRACE_1 = ' '
+      E_TRACE_2 = ' '
+
+!  Constants
+!  ---------
+
+      DEG_TO_RAD = DACOS(-1.0d0)/180.0d0
+      PI4 = DEG_TO_RAD * 720.0d0
+
+!  Local linearization flag
+
+      DO_PROFILE_WFS = .not. DO_SIM_ONLY
+
+!  SS Flux multiplier: Now always F / 4pi. Not required here.
+!      SS_FLUX_MULTIPLIER = FLUX_FACTOR / PI4
+
+!  Input checking
+!  ==============
+
+!  Check input Basic. This could be put outside the thread loop.
+!    SS inputs are omitted in this version........
+!    !@@ 2p1, Observational Geometry inputs are included (New 12/21/12)
+!    !@@ 2p3 Includes check on Flux output flags, and setting of Post-Processing flag
+
+      CALL TWOSTREAM_CHECK_INPUTS_BASIC  &
+        ( MAXLAYERS, MAXMESSAGES, MAX_USER_OBSGEOMS,             & ! Dimensions !@@
+          MAXBEAMS, MAX_USER_STREAMS, MAX_USER_RELAZMS,          & ! Dimensions
+          DO_UPWELLING, DO_DNWELLING, DO_PLANE_PARALLEL,         & ! Input
+          DO_SOLAR_SOURCES, DO_THERMAL_EMISSION,                 & ! Input
+          DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT, DO_POSTPROCESSING, & ! Input !@@ New line, 2p3
+          DO_USER_OBSGEOMS, N_USER_OBSGEOMS, USER_OBSGEOMS,      & ! Input !@@ New line
+          NLAYERS, NBEAMS, N_USER_STREAMS, N_USER_RELAZMS,       & ! Input
+          BEAM_SZAS, USER_ANGLES, USER_RELAZMS,                  & ! Input
+          EARTH_RADIUS, HEIGHT_GRID,                             & ! Input
+          STATUS_SUB, C_NMESSAGES, C_MESSAGES, C_ACTIONS )         ! Output
+
+      IF ( STATUS_SUB .EQ. 1 ) THEN
+        STATUS_INPUTCHECK = 1
+        RETURN
+      ENDIF
+
+!  Check input threaded values (IOPs in the atmosphere)
+
+     CALL TWOSTREAM_CHECK_INPUTS_THREAD &
+       ( MAXLAYERS, MAXTHREADS, MAXMESSAGES,               & ! Dimensions
+         NLAYERS, THREAD,                                  & ! input
+         DELTAU_INPUT, OMEGA_INPUT, ASYMM_INPUT,           & ! Input
+         STATUS_SUB, C_NMESSAGES, C_MESSAGES, C_ACTIONS )    ! Output
+
+      IF ( STATUS_SUB .EQ. 1 ) THEN
+        STATUS_INPUTCHECK = 1
+        RETURN
+      ENDIF
+
+!  Geometry offsets
+!  ================
+
+!  Save some offsets for indexing geometries
+
+!   !@@, 2p1 This section revised for the Observational Geometry option
+!   !@@ N_GEOMETRIES = NBEAMS * N_USER_STREAMS * N_USER_RELAZMS
+!   !@@ 2p3, This section revised for the post-processing flag
+
+      N_VIEWING = 0 ; N_GEOMETRIES = 0
+      IBOFF     = 0 ; UMOFF        = 0
+      IF ( DO_USER_OBSGEOMS.and.DO_SOLAR_SOURCES ) THEN
+         N_VIEWING    = N_USER_OBSGEOMS
+         N_GEOMETRIES = N_USER_OBSGEOMS
+      ELSE
+         if ( DO_POSTPROCESSING ) THEN
+            N_VIEWING    = N_USER_STREAMS * N_USER_RELAZMS
+            N_GEOMETRIES = NBEAMS * N_VIEWING
+            DO IBEAM = 1, NBEAMS
+               IBOFF(IBEAM) = N_VIEWING * ( IBEAM - 1 )
+               DO UM = 1, N_USER_STREAMS
+                  UMOFF(IBEAM,UM) = IBOFF(IBEAM) +  N_USER_RELAZMS * (UM - 1)
+               END DO
+            END DO
+         ENDIF
+      ENDIF
+
+!  Geometry adjustment
+!  -------------------
+
+!   Not implemented. (only needed for Exact SS calculation)
+
+!  Adjust surface condition
+!      ADJUST_SURFACE = .FALSE.
+!      IF ( DO_SSCORR_OUTGOING ) THEN
+!        IF (HEIGHT_GRID(NLAYERS).GT.GEOMETRY_SPECHEIGHT ) THEN
+!         ADJUST_SURFACE = .TRUE.
+!        ENDIF
+!      ENDIF
+!  Perform adjustment.
+!   Not implemented in streamlined version (only needed for SS stuff)
+!      modified_eradius = earth_radius + GEOMETRY_SPECHEIGHT
+!      CALL multi_outgoing_adjustgeom                                &
+!        ( N_USER_STREAMS, NBEAMS, N_USER_RELAZMS,                    &
+!          N_USER_STREAMS,   NBEAMS,   N_USER_RELAZMS,                &
+!          height_grid(nlayers), modified_eradius, adjust_surface,    &
+!          user_angles,  beam_szas, user_relazms,                     &
+!          user_angles_adjust, beam_szas_adjust, user_relazms_adjust, &
+!          fail, mail )
+!      if ( fail ) return
+
+!  Chapman function calculation
+!  ----------------------------
+
+!  Start beam loop
+
+      DO IB = 1, NBEAMS
+          CALL TWOSTREAM_BEAM_GEOMETRY_PREPARE &
+            ( MAXLAYERS, MAXBEAMS,                      & ! Dimensions
+              NLAYERS, DO_PLANE_PARALLEL, IB,           & ! Input
+              BEAM_SZAS(IB), EARTH_RADIUS, HEIGHT_GRID, & ! Input
+              CHAPMAN_FACTORS, LOCAL_SZA )                ! In/Out
+      ENDDO
+
+!  Get derived inputs
+!  ==================
+
+!  Quadrature
+
+      MUSTREAM  = STREAM_VALUE
+      SINSTREAM = DSQRT(1.0d0-MUSTREAM*MUSTREAM)
+
+!  Solar zenith angle cosines/sines
+
+      DO IB = 1, NBEAMS
+        X0(IB)   = DCOS ( BEAM_SZAS(IB) * DEG_TO_RAD )
+      ENDDO
+
+!  User stream cosines. 11/5/13 2p3 Post-processing control
+
+      IF ( DO_POSTPROCESSING ) THEN
+         DO I = 1, N_USER_STREAMS
+            USER_STREAMS(I) = DCOS(DEG_TO_RAD * USER_ANGLES(I))
+         ENDDO
+      ENDIF
+
+!  Set local optical properties (delta 2s scaling)
+!  Just copy inputs, if not required
+
+      IF ( DO_D2S_SCALING ) THEN
+        DO N = 1, NLAYERS
+          OMFAC = 1.0d0 - OMEGA_INPUT(N,T) * D2S_SCALING(N,T)
+          M1FAC = 1.0d0 - D2S_SCALING(N,T)
+          GDIFF = ASYMM_INPUT(N,T) - D2S_SCALING(N,T)
+          DELTAU_VERT(N) = OMFAC * DELTAU_INPUT(N,T)
+          OMEGA_TOTAL(N) = M1FAC * OMEGA_INPUT(N,T) / OMFAC
+          ASYMM_TOTAL(N) = GDIFF / M1FAC
+        ENDDO
+      ELSE
+        DO N = 1, NLAYERS
+          DELTAU_VERT(N) = DELTAU_INPUT(N,T)
+          OMEGA_TOTAL(N) = OMEGA_INPUT(N,T)
+          ASYMM_TOTAL(N) = ASYMM_INPUT(N,T)
+        ENDDO
+      ENDIF
+
+!mick fix 1/7/2012 - singularity busters added
+
+!  Note: If running a case close to optical property numerical limits,
+!        delta-m scaling may modify omega and/or g in such a way as to make
+!        them unphysical or introduce instability; therefore, we recheck
+!        omega and g AFTER delta-m scaling and slightly adjust them if necessary
+
+      DO N = 1, NLAYERS
+        SBUST = .false.
+
+        !Singularity buster for single scatter albedo
+        IF (OMEGA_TOTAL(N) > 0.999999999D0) THEN
+          OMEGA_TOTAL(N) = 0.999999999D0
+          SBUST(1) = .true.
+        ELSE IF (OMEGA_TOTAL(N) < 1.0D-9) THEN
+          OMEGA_TOTAL(N) = 1.0D-9
+          SBUST(2) = .true.
+        END IF
+
+        !Singularity buster for asymmetry parameter
+        IF (ASYMM_TOTAL(N) > 0.999999999D0) THEN
+          ASYMM_TOTAL(N) = 0.999999999D0
+          SBUST(3) = .true.
+        ELSE IF (ASYMM_TOTAL(N) < -0.999999999D0) THEN
+          ASYMM_TOTAL(N) = -0.999999999D0
+          SBUST(4) = .true.
+        ELSE IF ((ASYMM_TOTAL(N) >= 0.0D0) .AND. &
+                 (ASYMM_TOTAL(N) < 1.0D-9)) THEN
+          ASYMM_TOTAL(N) = 1.0D-9
+          SBUST(5) = .true.
+        ELSE IF ((ASYMM_TOTAL(N) < 0.0D0) .AND. &
+                 (ASYMM_TOTAL(N) > -1.0D-9)) THEN
+          ASYMM_TOTAL(N) = -1.0D-9
+          SBUST(6) = .true.
+        END IF
+
+        !WRITE(*,*)
+        !WRITE(*,'(A,I2)') 'FOR LAYER: ',N
+        !DO I=1,6
+        !  WRITE(*,'(A,I1,A,L1)') '  SBUST(',I,') = ',SBUST(I)
+        !ENDDO
+
+      ENDDO
+
+!  Set local linearized optical properties (delta 2s scaling)
+
+      IF ( DO_PROFILE_WFS  ) THEN
+        IF ( DO_D2S_SCALING ) THEN
+          DO N = 1, NLAYERS
+            !OMFAC = 1.0D0 - OMEGA(I)*FA (= alpha)
+            OMFAC = 1.0d0 - OMEGA_INPUT(N,T) * D2S_SCALING(N,T)
+            !M1FAC = 1.0D0 - FA
+            M1FAC = 1.0d0 - D2S_SCALING(N,T)
+            DO Q = 1, MAX_ATMOSWFS
+              L_OMFAC = L_OMEGA_INPUT(N,Q,T) *   D2S_SCALING(N,T)    &
+                       +  OMEGA_INPUT(N,T)   * L_D2S_SCALING(N,Q,T)
+              L_DELTAU_VERT(N,Q) = - L_OMFAC *   DELTAU_INPUT(N,T)   &
+                                   +   OMFAC * L_DELTAU_INPUT(N,Q,T)
+
+              LW1 = L_OMFAC * (1.0d0 - OMEGA_TOTAL(N) )
+              L_OMEGA_TOTAL(N,Q) = (L_OMEGA_INPUT(N,Q,T)-LW1) / OMFAC
+
+              LW2 = L_D2S_SCALING(N,Q,T) * (1.0d0 - ASYMM_TOTAL(N) )
+              L_ASYMM_TOTAL(N,Q) = (L_ASYMM_INPUT(N,Q,T)-LW2) / M1FAC
+            ENDDO
+          ENDDO
+        ELSE
+          DO N = 1, NLAYERS
+            DO Q = 1, MAX_ATMOSWFS
+              L_DELTAU_VERT(N,Q) = L_DELTAU_INPUT(N,Q,T)
+              L_OMEGA_TOTAL(N,Q) = L_OMEGA_INPUT(N,Q,T)
+              L_ASYMM_TOTAL(N,Q) = L_ASYMM_INPUT(N,Q,T)
+            ENDDO
+          ENDDO
+        ENDIF
+      ENDIF
+
+!  Initialise Fourier loop
+!  =======================
+
+!  set Fourier number, Nominally 1 in absence of SS-only flag
+!    Zero if no solar sources (Thermal-only run)
+!  !@@ 2p3, Set NFOURIERS equal to zero for MVOUT_ONLY
+
+      N_FOURIERS = 1
+      IF (  DO_MVOUT_ONLY )          N_FOURIERS = 0
+      IF ( .NOT. DO_SOLAR_SOURCES  ) N_FOURIERS = 0
+
+!mick fix 1/7/2012 - (test - make this permanent?)
+      IF ( (NBEAMS == 1) .AND. (BEAM_SZAS(1) < 1.0D-8) ) &
+        N_FOURIERS = 0
+
+!  Albedo
+
+      ALBEDO = LAMBERTIAN_ALBEDO(T)
+
+!  Old code was dependent on SS flag
+!      IF ( DO_SSFULL ) THEN
+!        N_FOURIERS = 0
+!      ELSE
+!        N_FOURIERS = 1
+!      ENDIF
+
+!  Fourier loop
+!  ============
+
+      DO FOURIER = 0, N_FOURIERS
+
+!  Azimuth cosine factors (Fourier = 1). !@@ Notice OBSGEOM option
+!  !@@ 2p3, not required for FLux-only output
+
+        AZMFAC = 0.0D0
+        IF ( DO_POSTPROCESSING ) THEN
+          IF ( FOURIER .GT. 0 ) THEN
+            DFC = DBLE(FOURIER)
+            IF ( DO_USER_OBSGEOMS.and.DO_SOLAR_SOURCES ) THEN
+              DO IB = 1, NBEAMS
+                AZM_ARGUMENT = USER_RELAZMS(IB) * DFC
+                AZMFAC(LUM,IB,LUA) = DCOS(DEG_TO_RAD*AZM_ARGUMENT)
+              ENDDO
+            ELSE
+              DO UA = 1, N_USER_RELAZMS
+                DO IB = 1, NBEAMS
+                  DO UM = 1, N_USER_STREAMS
+                    AZM_ARGUMENT = USER_RELAZMS(UA) * DFC
+                    AZMFAC(UM,IB,UA) = DCOS(DEG_TO_RAD*AZM_ARGUMENT)
+                  ENDDO
+                ENDDO
+              ENDDO
+            ENDIF
+          ENDIF
+        ENDIF
+
+!  Main call to Lidort Fourier module
+!  ----------------------------------
+
+!  !@@ Add Observational Geometry dimension and control variables !@@ 2p1
+!  !@@ Call statement expanded to include ALL-LEVEL outputs       !@@ 2p2
+!  !@@ Call statement expanded to include Flux outputs and control !@@ 2p3  11/5/13
+
+        CALL TWOSTREAM_LPS_FOURIER_MASTER &
+        ( MAXLAYERS, MAXTOTAL, MAXBEAMS, MAX_USER_STREAMS, MAXTHREADS,          & ! Dimensions
+          MAX_ATMOSWFS, MAX_SURFACEWFS,                                         & ! Dimensions
+          DO_UPWELLING, DO_DNWELLING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,        & ! Input flags control !@@2p1
+          DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,           & ! Input flags sources
+          DO_PLANE_PARALLEL, DO_2S_LEVELOUT, DO_SURFACE_WFS, DO_SIM_ONLY,       & ! Input flags !@@ 2p2
+          DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT, DO_POSTPROCESSING,                & ! Input !@@ New line, 2p3
+          NLAYERS, NTOTAL, NBEAMS, N_USER_STREAMS,                              & ! Input integer control
+          LAYER_VARY_FLAG, LAYER_VARY_NUMBER, N_SURFACE_WFS,                    & ! Input integer control
+          FOURIER, THREAD, FLUX_FACTOR, STREAM_VALUE, X0, USER_STREAMS, PI4,    & ! Input real control
+          ALBEDO, BRDF_F_0, BRDF_F, UBRDF_F,                                    & ! Input real surface
+          THERMAL_BB_INPUT, SURFBB, EMISSIVITY,                                 & ! Input real thermal
+          LS_BRDF_F_0, LS_BRDF_F, LS_UBRDF_F, LS_EMISSIVITY,                    & ! Input real L_surface
+          DELTAU_VERT, OMEGA_TOTAL, ASYMM_TOTAL, CHAPMAN_FACTORS,               & ! Input real optical
+          L_DELTAU_VERT, L_OMEGA_TOTAL, L_ASYMM_TOTAL,                          & ! Input real L_optical
+          INITIAL_TRANS, AVERAGE_SECANT, LOCAL_CSZA, LAYER_PIS_CUTOFF,          & ! In/Out
+          DELTAU_SLANT, TAUSLANT, SOLAR_BEAM_OPDEP, DO_DIRECTBEAM,              & ! In/Out
+          T_DELT_MUBAR, T_DELT_USERM, EMULT_UP, EMULT_DN,                       & ! In/Out
+          LP_INITIAL_TRANS, LP_AVERAGE_SECANT, LP_T_DELT_MUBAR,                 & ! In/Out
+          L_T_DELT_USERM, LP_EMULT_UP, LP_EMULT_DN,                             & ! In/Out
+          INTENSITY_F_UP, INTENSITY_F_DN, RADLEVEL_F_UP, RADLEVEL_F_DN,         & ! Output !@@ 2p2
+          PROFILEWF_F_UP, PROFILEWF_F_DN, PROFJACLEVEL_F_UP, PROFJACLEVEL_F_DN, & ! Output !@@ 2p2
+          SURFACEWF_F_UP, SURFACEWF_F_DN, SURFJACLEVEL_F_UP, SURFJACLEVEL_F_DN, & ! Output !@@ 2p2
+          FLUXES_TOA, PROFJACFLUXES_TOA, SURFJACFLUXES_TOA,                     & ! Output !@@ 2p3
+          FLUXES_BOA, PROFJACFLUXES_BOA, SURFJACFLUXES_BOA,                     & ! Output !@@ 2p3 
+          STATUS_SUB, E_MESSAGE, E_TRACE_1 )                                      ! Output
+
+!  Exception handling
+
+        IF ( STATUS_SUB .NE. 0 ) THEN
+          STATUS_EXECUTION = 1
+          WRITE(CF,'(I2)')FOURIER
+          E_TRACE_2 = 'Error from 2S_LPS_FOURIER_MASTER, Fourier # ' &
+                        //CF//', Thread # '//wthread
+          RETURN
+        ENDIF
+
+!  Fourier summation and Convergence examination
+!  ---------------------------------------------
+
+!  SS code not included in this version---------------
+!  !@@ Alternative Call for Observational Geometry case
+!  !@@ Call statements expanded to include ALL-LEVEL outputs !@@ 2p2
+!  !@@ Convergence skipped for MVOUT_ONLY option             !@@ 2p3
+
+!mick fix 12/17/2013 - fixed logic
+        !IF ( DO_MVOUT_ONLY ) then
+        IF ( .not. DO_MVOUT_ONLY ) then
+          DO IBEAM = 1, NBEAMS
+
+! Observation Geometry option
+
+            IF ( DO_USER_OBSGEOMS.and.DO_SOLAR_SOURCES ) THEN
+              CALL TWOSTREAM_CONVERGE_OBSGEO &
+              ( MAXBEAMS, MAX_USER_STREAMS, MAX_USER_RELAZMS,      & ! Dimensions
+                MAX_GEOMETRIES, MAXTHREADS, MAXLAYERS,             & ! Dimensions ! @@ 2p2
+                DO_UPWELLING, DO_DNWELLING, DO_2S_LEVELOUT,        & ! Inputs     ! @@ 2p2
+                NLAYERS, THREAD, IBEAM, FOURIER, AZMFAC,           & ! Inputs     ! @@ 2p2
+                INTENSITY_F_UP,  INTENSITY_F_DN,                   & ! Inputs
+                RADLEVEL_F_UP,   RADLEVEL_F_DN,                    & ! Inputs     ! @@ 2p2
+                INTENSITY_TOA, INTENSITY_BOA,                      & ! In/Out
+                RADLEVEL_UP,   RADLEVEL_DN   )                       ! In/Out     ! @@ 2p2
+
+              IF ( .not. DO_SIM_ONLY ) THEN
+                CALL TWOSTREAM_LPS_CONVERGE_OBSGEO  &
+              ( MAXBEAMS, MAX_USER_STREAMS, MAX_USER_RELAZMS, MAX_GEOMETRIES,                & ! Dimensions
+                MAXTHREADS, MAXLAYERS, MAX_ATMOSWFS, MAX_SURFACEWFS,                         & ! Dimensions ! @@ 2p2
+                DO_UPWELLING, DO_DNWELLING, DO_2S_LEVELOUT, DO_BRDF_SURFACE, DO_SURFACE_WFS, & ! Inputs     ! @@ 2p2
+                LAYER_VARY_FLAG, LAYER_VARY_NUMBER, N_SURFACE_WFS,                           & ! Inputs
+                NLAYERS, THREAD, IBEAM, FOURIER, AZMFAC,                                     & ! Inputs
+                PROFILEWF_F_UP,  PROFILEWF_F_DN, PROFJACLEVEL_F_UP, PROFJACLEVEL_F_DN,       & ! Inputs     ! @@ 2p2
+                SURFACEWF_F_UP,  SURFACEWF_F_DN, SURFJACLEVEL_F_UP, SURFJACLEVEL_F_DN,       & ! Inputs     ! @@ 2p2
+                PROFILEWF_TOA,   PROFILEWF_BOA,  PROFJACLEVEL_UP,   PROFJACLEVEL_DN,         & ! In/Out     ! @@ 2p2
+                SURFACEWF_TOA,   SURFACEWF_BOA,  SURFJACLEVEL_UP,   SURFJACLEVEL_DN  )         ! In/Out     ! @@ 2p2
+              ENDIF
+
+!  Lattice option
+
+            ELSE
+              CALL TWOSTREAM_CONVERGE &
+              ( MAXBEAMS, MAX_USER_STREAMS, MAX_USER_RELAZMS,   & ! Dimensions
+                MAX_GEOMETRIES, MAXTHREADS, MAXLAYERS,          & ! Dimensions ! @@ 2p2
+                DO_UPWELLING, DO_DNWELLING, DO_2S_LEVELOUT,     & ! Inputs     ! @@ 2p2
+                NLAYERS, THREAD, IBEAM, FOURIER,                & ! Inputs     ! @@ 2p2
+                N_USER_STREAMS, N_USER_RELAZMS, AZMFAC, UMOFF,  & ! Inputs
+                INTENSITY_F_UP,  INTENSITY_F_DN,                & ! Inputs
+                RADLEVEL_F_UP,   RADLEVEL_F_DN,                 & ! Inputs     ! @@ 2p2
+                INTENSITY_TOA, INTENSITY_BOA,                   & ! In/Out
+                RADLEVEL_UP,   RADLEVEL_DN   )                    ! In/Out     ! @@ 2p2
+
+              IF ( .not. DO_SIM_ONLY ) THEN
+                CALL TWOSTREAM_LPS_CONVERGE &
+              ( MAXBEAMS, MAX_USER_STREAMS, MAX_USER_RELAZMS, MAX_GEOMETRIES,                & ! Dimensions
+                MAXTHREADS, MAXLAYERS, MAX_ATMOSWFS, MAX_SURFACEWFS,                         & ! Dimensions ! @@ 2p2
+                DO_UPWELLING, DO_DNWELLING, DO_2S_LEVELOUT, DO_BRDF_SURFACE, DO_SURFACE_WFS, & ! Inputs     ! @@ 2p2
+                LAYER_VARY_FLAG, LAYER_VARY_NUMBER, N_SURFACE_WFS, NLAYERS, THREAD,          & ! Inputs
+                IBEAM, FOURIER, N_USER_STREAMS, N_USER_RELAZMS, AZMFAC, UMOFF,               & ! Inputs
+                PROFILEWF_F_UP,  PROFILEWF_F_DN, PROFJACLEVEL_F_UP, PROFJACLEVEL_F_DN,       & ! Inputs     ! @@ 2p2
+                SURFACEWF_F_UP,  SURFACEWF_F_DN, SURFJACLEVEL_F_UP, SURFJACLEVEL_F_DN,       & ! Inputs     ! @@ 2p2
+                PROFILEWF_TOA,   PROFILEWF_BOA,  PROFJACLEVEL_UP,   PROFJACLEVEL_DN,         & ! In/Out     ! @@ 2p2
+                SURFACEWF_TOA,   SURFACEWF_BOA,  SURFJACLEVEL_UP,   SURFJACLEVEL_DN  )         ! In/Out     ! @@ 2p2
+              ENDIF
+            ENDIF
+
+!  End loop
+
+          END DO
+        ENDIF
+
+!  end iteration loop
+
+      ENDDO
+
+!  Finish
+
+      RETURN
+END SUBROUTINE TWOSTREAM_LPS_MASTER
+
+SUBROUTINE TWOSTREAM_LPS_FOURIER_MASTER &
+        ( MAXLAYERS, MAXTOTAL, MAXBEAMS, MAX_USER_STREAMS, MAXTHREADS,          & ! Dimensions
+          MAX_ATMOSWFS, MAX_SURFACEWFS,                                         & ! Dimensions
+          DO_UPWELLING, DO_DNWELLING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,        & ! Input flags control !@@2p1
+          DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,           & ! Input flags sources
+          DO_PLANE_PARALLEL, DO_2S_LEVELOUT, DO_SURFACE_WFS, DO_SIM_ONLY,       & ! Input flags !@@ 2p2
+          DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT, DO_POSTPROCESSING,                & ! Input !@@ New line, 2p3
+          NLAYERS, NTOTAL, NBEAMS, N_USER_STREAMS,                              & ! Input integer control
+          LAYER_VARY_FLAG, LAYER_VARY_NUMBER, N_SURFACE_WFS,                    & ! Input integer control
+          FOURIER, THREAD, FLUX_FACTOR, STREAM_VALUE, X0, USER_STREAMS, PI4,    & ! Input real control
+          ALBEDO, BRDF_F_0, BRDF_F, UBRDF_F,                                    & ! Input real surface
+          THERMAL_BB_INPUT, SURFBB, EMISSIVITY,                                 & ! Input real thermal
+          LS_BRDF_F_0, LS_BRDF_F, LS_UBRDF_F, LS_EMISSIVITY,                    & ! Input real L_surface
+          DELTAU_VERT, OMEGA_TOTAL, ASYMM_TOTAL, CHAPMAN_FACTORS,               & ! Input real optical
+          L_DELTAU_VERT, L_OMEGA_TOTAL, L_ASYMM_TOTAL,                          & ! Input real L_optical
+          INITIAL_TRANS, AVERAGE_SECANT, LOCAL_CSZA, LAYER_PIS_CUTOFF,          & ! In/Out
+          DELTAU_SLANT, TAUSLANT, SOLAR_BEAM_OPDEP, DO_DIRECTBEAM,              & ! In/Out
+          T_DELT_MUBAR, T_DELT_USERM, EMULT_UP, EMULT_DN,                       & ! In/Out
+          LP_INITIAL_TRANS, LP_AVERAGE_SECANT, LP_T_DELT_MUBAR,                 & ! In/Out
+          L_T_DELT_USERM, LP_EMULT_UP, LP_EMULT_DN,                             & ! In/Out
+          INTENSITY_F_UP, INTENSITY_F_DN, RADLEVEL_F_UP, RADLEVEL_F_DN,         & ! Output !@@ 2p2
+          PROFILEWF_F_UP, PROFILEWF_F_DN, PROFJACLEVEL_F_UP, PROFJACLEVEL_F_DN, & ! Output !@@ 2p2
+          SURFACEWF_F_UP, SURFACEWF_F_DN, SURFJACLEVEL_F_UP, SURFJACLEVEL_F_DN, & ! Output !@@ 2p2
+          FLUXES_TOA, PROFJACFLUXES_TOA, SURFJACFLUXES_TOA,                     & ! Output !@@ 2p3
+          FLUXES_BOA, PROFJACFLUXES_BOA, SURFJACFLUXES_BOA,                     & ! Output !@@ 2p3 
+          STATUS, MESSAGE, TRACE )                                                ! Output
+
+      implicit none
+
+!  precision
+
+      INTEGER, PARAMETER :: dp     = KIND( 1.0D0 )
+
+!  input
+!  -----
+
+!  Dimensions :
+!      MAXTOTAL       = 2 * MAXLAYERS
+     
+      INTEGER, INTENT(IN)        :: MAXLAYERS, MAXTOTAL
+      INTEGER, INTENT(IN)        :: MAXBEAMS, MAX_USER_STREAMS
+      INTEGER, INTENT(IN)        :: MAX_ATMOSWFS, MAX_SURFACEWFS
+      INTEGER, INTENT(IN)        :: MAXTHREADS
+
+!  Flags
+!     ! @@ Rob Spurr, 17 July 2013, Version 2.2, Levelout flag
+
+      LOGICAL, INTENT(IN)  :: DO_UPWELLING, DO_DNWELLING
+      LOGICAL, INTENT(IN)  :: DO_BRDF_SURFACE, DO_PLANE_PARALLEL
+      LOGICAL, INTENT(IN)  :: DO_2S_LEVELOUT
+
+!  ** New **. October 2011, Sources control, including thermal
+
+      LOGICAL, INTENT(IN)  :: DO_THERMAL_EMISSION
+      LOGICAL, INTENT(IN)  :: DO_SURFACE_EMISSION
+      LOGICAL, INTENT(IN)  :: DO_SOLAR_SOURCES
+
+!   !@@ Observational Geometry flag !@@ 2p1
+
+      LOGICAL, INTENT(IN)  :: DO_USER_OBSGEOMS !@@ 2p1
+
+!  !@@ Version 2p3, 11/5/13. Flux output flags, processing flag
+
+      LOGICAL, INTENT(IN)  :: DO_MVOUT_ONLY
+      LOGICAL, INTENT(IN)  :: DO_ADDITIONAL_MVOUT
+      LOGICAL, INTENT(IN)  :: DO_POSTPROCESSING
+
+!  Linearization flags!  Linearization flags
+
+      LOGICAL, INTENT(IN)  :: DO_SURFACE_WFS
+      LOGICAL, INTENT(IN)  :: DO_SIM_ONLY
+
+!  Numbers
+
+      INTEGER, INTENT(IN)  :: NLAYERS, NTOTAL
+      INTEGER, INTENT(IN)  :: NBEAMS, N_USER_STREAMS
+
+!  Linearization control
+
+      LOGICAL, INTENT(IN)        :: LAYER_VARY_FLAG   ( MAXLAYERS )
+      INTEGER, INTENT(IN)        :: LAYER_VARY_NUMBER ( MAXLAYERS )
+      INTEGER, INTENT(IN)        :: N_SURFACE_WFS
+
+!  Input Fourier component number, THREAD number
+!        (latter added 11/5/13 for Version 2p3 Flux output)
+
+      INTEGER, INTENT(IN)        :: FOURIER, THREAD
+
+!  Stream value
+
+      REAL(kind=dp), INTENT(IN)  :: STREAM_VALUE
+
+!  Flux factor
+
+      REAL(kind=dp), INTENT(IN)  :: FLUX_FACTOR
+
+!  Geometry
+
+      REAL(kind=dp), INTENT(IN)  :: X0           ( MAXBEAMS )
+      REAL(kind=dp), INTENT(IN)  :: USER_STREAMS ( MAX_USER_STREAMS )
+
+!  4pi
+
+      REAL(kind=dp), INTENT(IN)  :: PI4
+
+!  Surface variables
+!  -----------------
+
+!  Albedo 
+
+      REAL(kind=dp), INTENT(IN)  :: ALBEDO
+
+!  BRDF fourier components
+!  0 and 1 Fourier components of BRDF, following order (same all threads)
+!    incident solar directions,  reflected quadrature stream
+!    incident quadrature stream, reflected quadrature stream
+!    incident solar directions,  reflected user streams    !  NOT REQUIRED
+!    incident quadrature stream, reflected user streams
+
+      REAL(kind=dp), INTENT(IN)  :: BRDF_F_0  ( 0:1, MAXBEAMS )
+      REAL(kind=dp), INTENT(IN)  :: BRDF_F    ( 0:1 )
+!      REAL(kind=dp), INTENT(IN)  :: UBRDF_F_0 ( 0:1, MAX_USER_STREAMS, MAXBEAMS )
+      REAL(kind=dp), INTENT(IN)  :: UBRDF_F   ( 0:1, MAX_USER_STREAMS )
+
+!  Linearized BRDF fourier components
+!  0 and 1 Fourier components of BRDF, following order (same all threads)
+!    incident solar directions,  reflected quadrature stream
+!    incident quadrature stream, reflected quadrature stream
+!    incident quadrature stream, reflected user streams
+
+      REAL(kind=dp), INTENT(IN)  :: LS_BRDF_F_0  (MAX_SURFACEWFS,0:1,MAXBEAMS)
+      REAL(kind=dp), INTENT(IN)  :: LS_BRDF_F    (MAX_SURFACEWFS,0:1)
+      REAL(kind=dp), INTENT(IN)  :: LS_UBRDF_F   (MAX_SURFACEWFS,0:1,MAX_USER_STREAMS)
+
+!  ** New **. October 2011. Thermal variables
+
+      REAL(kind=dp), INTENT(IN)  :: SURFBB
+      REAL(kind=dp), INTENT(IN)  :: THERMAL_BB_INPUT ( 0:MAXLAYERS )
+      REAL(kind=dp), INTENT(IN)  :: EMISSIVITY
+
+      REAL(kind=dp), INTENT(IN)  :: LS_EMISSIVITY       ( MAX_SURFACEWFS )
+
+!  Optical properties
+!  ------------------
+
+!  iops
+
+      REAL(kind=dp), INTENT(IN)  :: DELTAU_VERT(MAXLAYERS)
+      REAL(kind=dp), INTENT(IN)  :: OMEGA_TOTAL(MAXLAYERS)
+      REAL(kind=dp), INTENT(IN)  :: ASYMM_TOTAL(MAXLAYERS)
+
+!  Linearized optical properties
+
+      REAL(kind=dp), INTENT(IN)  :: L_DELTAU_VERT(MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp), INTENT(IN)  :: L_OMEGA_TOTAL(MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp), INTENT(IN)  :: L_ASYMM_TOTAL(MAXLAYERS,MAX_ATMOSWFS)
+
+!  Output
+!  ------
+
+!  User-defined solutions
+
+      REAL(kind=dp), INTENT(OUT) :: INTENSITY_F_UP (MAX_USER_STREAMS,MAXBEAMS)
+      REAL(kind=dp), INTENT(OUT) :: INTENSITY_F_DN (MAX_USER_STREAMS,MAXBEAMS)
+
+!  Fourier-component solutions at ALL levels
+!     ! @@ Rob Spurr, 17 July 2013, Version 2.2 --> Optional Output at ALL LEVELS
+
+      REAL(kind=dp), INTENT(OUT) :: RADLEVEL_F_UP (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS)
+      REAL(kind=dp), INTENT(OUT) :: RADLEVEL_F_DN (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS)
+
+!  User-defined Fourier component solutions
+
+      REAL(kind=dp), INTENT(OUT) :: PROFILEWF_F_UP(MAX_USER_STREAMS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp), INTENT(OUT) :: PROFILEWF_F_DN(MAX_USER_STREAMS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+      REAL(kind=dp), INTENT(OUT) :: SURFACEWF_F_UP(MAX_USER_STREAMS,MAXBEAMS,MAX_SURFACEWFS)
+      REAL(kind=dp), INTENT(OUT) :: SURFACEWF_F_DN(MAX_USER_STREAMS,MAXBEAMS,MAX_SURFACEWFS)
+
+      REAL(kind=dp), INTENT(OUT) :: PROFJACLEVEL_F_UP (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp), INTENT(OUT) :: PROFJACLEVEL_F_DN (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+
+      REAL(kind=dp), INTENT(OUT) :: SURFJACLEVEL_F_UP (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAX_SURFACEWFS)
+      REAL(kind=dp), INTENT(OUT) :: SURFJACLEVEL_F_DN (MAX_USER_STREAMS,MAXBEAMS,0:MAXLAYERS,MAX_SURFACEWFS)
+
+!  Flux output
+!     ! @@ Rob Spurr, 05 November 2013, Version 2.3 --> Flux Output
+
+      REAL(kind=dp), INTENT(INOUT) :: FLUXES_TOA(MAXBEAMS,2,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: FLUXES_BOA(MAXBEAMS,2,MAXTHREADS)
+
+      REAL(kind=dp), INTENT(INOUT) :: PROFJACFLUXES_TOA (MAXBEAMS,2,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: PROFJACFLUXES_BOA (MAXBEAMS,2,MAXLAYERS,MAX_ATMOSWFS,MAXTHREADS)
+
+      REAL(kind=dp), INTENT(INOUT) :: SURFJACFLUXES_TOA (MAXBEAMS,2,MAX_SURFACEWFS,MAXTHREADS)
+      REAL(kind=dp), INTENT(INOUT) :: SURFJACFLUXES_BOA (MAXBEAMS,2,MAX_SURFACEWFS,MAXTHREADS)
+
+!  Exception handling
+
+      INTEGER      , INTENT(OUT)  :: STATUS
+      CHARACTER*(*), INTENT(OUT)  :: MESSAGE, TRACE
+
+!  Arrays required at the Top level
+!  ================================
+
+!  Solar beam pseudo-spherical setup
+!  ---------------------------------
+
+!  Chapman factors (from pseudo-spherical geometry)
+
+      REAL(kind=dp), INTENT(IN) :: CHAPMAN_FACTORS ( MAXLAYERS, MAXLAYERS, MAXBEAMS )
+
+!     Last layer to include Particular integral solution
+!     Average-secant and initial tramsittance factors for solar beams.
+!     Solar beam attenuation
+
+      INTEGER      , INTENT(INOUT)  :: LAYER_PIS_CUTOFF(MAXBEAMS)
+      REAL(kind=dp), INTENT(INOUT)  :: INITIAL_TRANS  ( MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp), INTENT(INOUT)  :: AVERAGE_SECANT ( MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp), INTENT(INOUT)  :: LOCAL_CSZA     ( MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp), INTENT(INOUT)  :: SOLAR_BEAM_OPDEP ( MAXBEAMS )
+
+!  Derived optical thickness inputs
+
+      REAL(kind=dp), INTENT(INOUT) :: DELTAU_SLANT ( MAXLAYERS, MAXLAYERS, MAXBEAMS )
+      REAL(kind=dp), INTENT(INOUT) :: TAUSLANT    ( 0:MAXLAYERS, MAXBEAMS )
+
+!  Linearized Average-secant and initial tramsittance factors
+
+      REAL(kind=dp), INTENT(INOUT) :: LP_INITIAL_TRANS  ( MAXLAYERS, MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS )
+      REAL(kind=dp), INTENT(INOUT) :: LP_AVERAGE_SECANT ( MAXLAYERS, MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS )
+
+!  Reflectance flags
+
+      LOGICAL      , INTENT(INOUT) :: DO_DIRECTBEAM ( MAXBEAMS )
+
+!  Transmittance Setups
+!  --------------------
+
+!  Transmittance factors for average secant stream
+
+      REAL(kind=dp), INTENT(INOUT) :: T_DELT_MUBAR ( MAXLAYERS, MAXBEAMS )
+
+!  Transmittance factors for user-defined stream angles
+
+      REAL(kind=dp), INTENT(INOUT) :: T_DELT_USERM ( MAXLAYERS, MAX_USER_STREAMS )
+
+!  Linearized Transmittance factors for average secant stream
+
+      REAL(kind=dp), INTENT(INOUT) :: LP_T_DELT_MUBAR ( MAXLAYERS, MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS )
+
+!  Linearized Transmittance factors for user-defined stream angles
+
+      REAL(kind=dp), INTENT(INOUT) :: L_T_DELT_USERM ( MAXLAYERS, MAX_USER_STREAMS, MAX_ATMOSWFS )
+
+!  Multiplier setups
+!  -----------------
+
+!  forcing term multipliers (saved for whole atmosphere)
+
+      REAL(kind=dp), INTENT(INOUT) :: EMULT_UP (MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS)
+      REAL(kind=dp), INTENT(INOUT) :: EMULT_DN (MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS)
+
+!  Linearized forcing term multipliers (saved for whole atmosphere)
+
+      REAL(kind=dp), INTENT(INOUT) :: LP_EMULT_UP (MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp), INTENT(INOUT) :: LP_EMULT_DN (MAX_USER_STREAMS,MAXLAYERS,MAXBEAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Local Arrays for argument passing
+!  =================================
+
+!  Geometry arrays
+!  ---------------
+
+!  These just save some Polynomial expansions
+
+      REAL(kind=dp) :: ULP ( MAX_USER_STREAMS )
+      REAL(kind=dp) :: POX  ( MAXBEAMS )
+      REAL(kind=dp) :: PX0X ( MAXBEAMS )
+      REAL(kind=dp) :: PX11, PXSQ
+
+!  Solar beam pseudo-spherical setup
+!  ---------------------------------
+
+!  Atmospheric attenuation
+
+      REAL(kind=dp) :: ATMOS_ATTN ( MAXBEAMS )
+
+!  Direct beam solution. No USER_DIRECT_BEAM, MS-mode only
+
+      REAL(kind=dp) :: DIRECT_BEAM ( MAXBEAMS )
+
+!  Transmittance factor
+
+      REAL(kind=dp) :: ITRANS_USERM ( MAXLAYERS, MAX_USER_STREAMS, MAXBEAMS )
+
+!  Multiplier arrays
+!  -----------------
+
+!  coefficient functions for user-defined angles
+
+      REAL(kind=dp) :: SIGMA_P(MAXLAYERS,MAX_USER_STREAMS,MAXBEAMS)
+      REAL(kind=dp) :: SIGMA_M(MAXLAYERS,MAX_USER_STREAMS,MAXBEAMS)
+
+!  L'Hopital's rule logical variables
+
+      LOGICAL       :: EMULT_HOPRULE (MAXLAYERS,MAX_USER_STREAMS,MAXBEAMS)
+
+!  coefficient functions for user-defined angles
+
+      REAL(kind=dp) :: ZETA_M(MAX_USER_STREAMS,MAXLAYERS)
+      REAL(kind=dp) :: ZETA_P(MAX_USER_STREAMS,MAXLAYERS)
+
+!  Integrated homogeneous solution multipliers, whole layer
+
+      REAL(kind=dp) :: HMULT_1(MAX_USER_STREAMS,MAXLAYERS)
+      REAL(kind=dp) :: HMULT_2(MAX_USER_STREAMS,MAXLAYERS)
+
+!  Solutions to the homogeneous RT equations 
+!  -----------------------------------------
+
+!  local matrices for eigenvalue computation
+
+      REAL(kind=dp) :: SAB(MAXLAYERS), DAB(MAXLAYERS)
+
+!  Eigensolutions
+
+      REAL(kind=dp) :: EIGENVALUE(MAXLAYERS)
+      REAL(kind=dp) :: EIGENTRANS(MAXLAYERS)
+
+!  Eigenvector solutions
+
+      REAL(kind=dp) :: XPOS(2,MAXLAYERS)
+      REAL(kind=dp) :: XNEG(2,MAXLAYERS)
+
+!  Saved help variables
+
+      REAL(kind=dp) :: U_HELP_P(0:1)
+      REAL(kind=dp) :: U_HELP_M(0:1)
+
+!  Eigenvectors defined at user-defined stream angles
+!     EP for the positive KEIGEN values, EM for -ve KEIGEN
+
+      REAL(kind=dp) :: U_XPOS(MAX_USER_STREAMS,MAXLAYERS)
+      REAL(kind=dp) :: U_XNEG(MAX_USER_STREAMS,MAXLAYERS)
+
+!  Downwelling BOA solution, before reflectance
+
+      REAL(kind=dp) :: H_HOMP, H_HOMM
+
+!  Boundary Value Problem
+!  Original and Elimination matrices (Pentadiagonal, 2x2)
+
+      REAL(kind=dp) :: SELM   (2,2)
+      REAL(kind=dp) :: ELM    (MAXTOTAL,4)
+      REAL(kind=dp) :: MAT    (MAXTOTAL,5)
+
+!  particular integrals
+!  --------------------
+
+!  Beam solution
+
+      REAL(kind=dp) :: WVEC(2,MAXLAYERS)
+
+!  Solutions at layer boundaries
+
+      REAL(kind=dp) :: WUPPER(2,MAXLAYERS)
+      REAL(kind=dp) :: WLOWER(2,MAXLAYERS)
+
+!  Auxiliary vectors
+
+      REAL(kind=dp) :: QDIFVEC(MAXLAYERS)
+      REAL(kind=dp) :: QSUMVEC(MAXLAYERS)
+      REAL(kind=dp) :: QVEC   (MAXLAYERS)
+
+!  Downwelling BOA solution, before reflectance
+
+      REAL(kind=dp) :: H_PARTIC
+
+!  Saved help variables
+
+      REAL(kind=dp) :: W_HELP(0:1)
+
+!  Diffuse-term Particular beam solutions at user-defined angles
+
+      REAL(kind=dp) :: U_WPOS2(MAX_USER_STREAMS,MAXLAYERS)
+      REAL(kind=dp) :: U_WNEG2(MAX_USER_STREAMS,MAXLAYERS)
+
+!  Single-scatter Particular beam solutions at user-defined angles
+!    ****** NOT REQUIRED for MS-mode only
+!      REAL(kind=dp) :: U_WPOS1(MAX_USER_STREAMS,MAXLAYERS)
+!      REAL(kind=dp) :: U_WNEG1(MAX_USER_STREAMS,MAXLAYERS)
+
+!  Solution constants of integration, and related quantities
+
+      REAL(kind=dp) :: LCON(MAXLAYERS)
+      REAL(kind=dp) :: MCON(MAXLAYERS)
+      REAL(kind=dp) :: LCON_XVEC(2,MAXLAYERS)
+      REAL(kind=dp) :: MCON_XVEC(2,MAXLAYERS)
+
+!  Thermal solutions (Only required once, do not need Intent(INOUT))
+!  -----------------
+
+!  Thermal solution at layer boundaries
+
+      REAL(kind=dp) :: T_WUPPER ( 2, MAXLAYERS )
+      REAL(kind=dp) :: T_WLOWER ( 2, MAXLAYERS )
+
+!  Complete layer term solutions
+
+      REAL(kind=dp) :: LAYER_TSUP_UP(MAX_USER_STREAMS,MAXLAYERS)
+      REAL(kind=dp) :: LAYER_TSUP_DN(MAX_USER_STREAMS,MAXLAYERS)
+
+!  User solutions
+
+      REAL(kind=dp) :: U_TPOS2 ( MAX_USER_STREAMS, MAXLAYERS, 2 )
+      REAL(kind=dp) :: U_TNEG2 ( MAX_USER_STREAMS, MAXLAYERS, 2 )
+
+!  Help variables
+
+      REAL(kind=dp) :: TCOM1 ( MAXLAYERS, 2 )
+      REAL(kind=dp) :: DELTAU_POWER ( MAXLAYERS, 2 )
+
+!  Linearizations
+
+      REAL(kind=dp) :: L_T_WUPPER ( 2, MAXLAYERS, MAX_ATMOSWFS )
+      REAL(kind=dp) :: L_T_WLOWER ( 2, MAXLAYERS, MAX_ATMOSWFS )
+      REAL(kind=dp) :: L_LAYER_TSUP_UP(MAX_USER_STREAMS,MAXLAYERS, MAX_ATMOSWFS)
+      REAL(kind=dp) :: L_LAYER_TSUP_DN(MAX_USER_STREAMS,MAXLAYERS, MAX_ATMOSWFS)
+      REAL(kind=dp) :: L_U_TPOS2 ( MAX_USER_STREAMS, MAXLAYERS, 2, MAX_ATMOSWFS )
+      REAL(kind=dp) :: L_U_TNEG2 ( MAX_USER_STREAMS, MAXLAYERS, 2, MAX_ATMOSWFS )
+      REAL(kind=dp) :: L_TCOM1 ( MAXLAYERS, 2, MAX_ATMOSWFS )
+      REAL(kind=dp) :: L_DELTAU_POWER ( MAXLAYERS, 2, MAX_ATMOSWFS )
+
+!  Post-processing variables
+!  -------------------------
+
+!  Reflectance integrand  a(j).x(j).I(-j)
+
+      REAL(kind=dp) :: IDOWNSURF
+
+!  Cumulative source terms
+
+      REAL(kind=dp) :: CUMSOURCE_UP(MAX_USER_STREAMS,0:MAXLAYERS)
+      REAL(kind=dp) :: CUMSOURCE_DN(MAX_USER_STREAMS,0:MAXLAYERS)
+
+!  Additional Linearization arrays
+!  -------------------------------
+
+!  Linearized Beam solution
+
+      REAL(kind=dp) :: LP_WVEC(2,MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  General beam solutions at the Upper/Lower boundary
+
+      REAL(kind=dp) :: L_WLOWER(2,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) :: L_WUPPER(2,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Eigenvector solutions
+
+      REAL(kind=dp) ::  L_XPOS(2,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  L_XNEG(2,MAXLAYERS,MAX_ATMOSWFS)
+
+      REAL(kind=dp) ::  L_SAB         ( MAXLAYERS, MAX_ATMOSWFS )
+      REAL(kind=dp) ::  L_DAB         ( MAXLAYERS, MAX_ATMOSWFS )
+      REAL(kind=dp) ::  L_EIGENVALUE  ( MAXLAYERS, MAX_ATMOSWFS )
+
+!  Integrated homogeneous solution multipliers, whole layer
+
+      REAL(kind=dp) ::  L_HMULT_1(MAX_USER_STREAMS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  L_HMULT_2(MAX_USER_STREAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  transmittance factors for +/- eigenvalues
+
+      REAL(kind=dp) ::  L_EIGENTRANS(MAXLAYERS,MAX_ATMOSWFS)
+
+!  Eigenvectors defined at user-defined stream angles
+
+      REAL(kind=dp) ::  L_U_XPOS(MAX_USER_STREAMS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  L_U_XNEG(MAX_USER_STREAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Diffuse-term Particular beam solutions at user-defined angles
+
+      REAL(kind=dp) ::  LP_U_WPOS2(MAX_USER_STREAMS,MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  LP_U_WNEG2(MAX_USER_STREAMS,MAXLAYERS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Single-scatter Particular beam solutions at user-defined angles
+!    NOT REQUIRED, MS_MODE only
+!      REAL(kind=dp) ::  LP_U_WPOS1(MAX_USER_STREAMS,MAXLAYERS,MAX_ATMOSWFS)
+!      REAL(kind=dp) ::  LP_U_WNEG1(MAX_USER_STREAMS,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Solution constants of integration, and related quantities
+
+      REAL(kind=dp) ::  NCON(MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  PCON(MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  NCONALB(MAXLAYERS,MAX_SURFACEWFS)
+      REAL(kind=dp) ::  PCONALB(MAXLAYERS,MAX_SURFACEWFS)
+      REAL(kind=dp) ::  NCON_XVEC(2,MAXLAYERS,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  PCON_XVEC(2,MAXLAYERS,MAX_ATMOSWFS)
+
+!  Column vectors for solving BCs
+
+      REAL(kind=dp) ::  COL2_WF    (MAXTOTAL,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  SCOL2_WF   (2,MAX_ATMOSWFS)
+      REAL(kind=dp) ::  COL2_WFALB    (MAXTOTAL,MAX_SURFACEWFS)
+      REAL(kind=dp) ::  SCOL2_WFALB   (2,MAX_SURFACEWFS)
+
+!  Local help variables
+!  --------------------
+
+      LOGICAL       :: DOVARY
+      INTEGER       :: N, NV, IBEAM, NVARY, I
+
+!  local inclusion flags
+! !@@ 2p3 11/5/13. Control for the Flux calculation  
+
+      LOGICAL       :: DO_INCLUDE_SURFACE
+      LOGICAL       :: DO_INCLUDE_SURFEMISS
+      LOGICAL       :: DO_INCLUDE_THERMEMISS
+      LOGICAL       :: DO_INCLUDE_DIRECTBEAM, DBEAM
+      LOGICAL       :: DO_INCLUDE_MVOUT
+      LOGICAL       :: DO_PROFILE_WFS
+
+!  Flux multiplier and Fourier component numbers
+
+      REAL(kind=dp) :: FLUX_MULTIPLIER
+      REAL(kind=dp) :: DELTA_FACTOR
+      REAL(kind=dp) :: SURFACE_FACTOR
+
+!  error tracing
+
+      INTEGER           :: STATUS_SUB
+
+!  ##############
+!  initialization
+!  ##############
+
+!  Exception handling initialize
+
+      STATUS  = 0
+      MESSAGE = ' '
+      TRACE   = ' '
+
+!  Initialize new output. NOT EFFICIENT - MICK, any suggestions ???
+!     ! @@ Rob Spurr, 17 July 2013, Version 2.2 --> Optional output at ALL LEVELS
+
+      RADLEVEL_F_UP = 0.0d0
+      RADLEVEL_F_DN = 0.0d0
+
+      PROFJACLEVEL_F_UP = 0.0d0
+      PROFJACLEVEL_F_DN = 0.0d0
+
+      SURFJACLEVEL_F_UP = 0.0d0
+      SURFJACLEVEL_F_DN = 0.0d0
+
+!  Set local flags
+!  ---------------
+
+!  inclusion of thermal surface emission term, only for Fourier = 0
+
+      DO_INCLUDE_SURFEMISS = .FALSE.
+      IF ( DO_SURFACE_EMISSION ) THEN
+        IF ( FOURIER .EQ. 0 ) THEN
+          DO_INCLUDE_SURFEMISS = .TRUE.
+        ENDIF
+      ENDIF
+
+!  inclusion of thermal emission term, only for Fourier = 0
+
+      DO_INCLUDE_THERMEMISS = .FALSE.
+      IF ( DO_THERMAL_EMISSION ) THEN
+        IF ( FOURIER .EQ. 0 ) THEN
+          DO_INCLUDE_THERMEMISS = .TRUE.
+        ENDIF
+      ENDIF
+
+!  Surface flag (for inclusion of some kind of reflecting boundary)
+!   BRDF flagging, added 04 May 2009.
+
+      DO_INCLUDE_SURFACE = .FALSE.
+      IF ( DO_BRDF_SURFACE ) THEN
+        DO_INCLUDE_SURFACE = .TRUE.
+      ELSE
+        IF ( FOURIER .EQ. 0 ) DO_INCLUDE_SURFACE = .TRUE.
+      ENDIF
+
+!  Direct beam flag (only if above albedo flag has been set)
+
+      IF ( DO_INCLUDE_SURFACE ) THEN
+        DO IBEAM = 1, NBEAMS
+          DO_DIRECTBEAM(IBEAM) = .TRUE.
+        ENDDO
+      ELSE
+        DO IBEAM = 1, NBEAMS
+          DO_DIRECTBEAM(IBEAM) = .FALSE.
+        ENDDO
+      ENDIF
+
+!  Inclusion of mean value calculation
+! !@@ 2p3 11/5/13. Control for the Flux calculation  
+
+      DO_INCLUDE_MVOUT = .FALSE.
+      IF ( DO_ADDITIONAL_MVOUT .OR. DO_MVOUT_ONLY ) THEN
+        IF ( FOURIER .EQ. 0 ) THEN
+          DO_INCLUDE_MVOUT = .TRUE.
+        ENDIF
+      ENDIF
+
+!  surface reflectance factors
+
+      IF ( FOURIER .EQ. 0 ) THEN
+        SURFACE_FACTOR = 2.0d0
+        DELTA_FACTOR   = 1.0d0
+      ELSE
+        SURFACE_FACTOR = 1.0d0
+        DELTA_FACTOR   = 2.0d0
+      ENDIF
+
+!  Flux multipliers
+!   = 1 / 4.pi with beam sources,  = 1 for Thermal alone.
+
+      FLUX_MULTIPLIER   = DELTA_FACTOR
+
+!  Local linearization flag
+
+      DO_PROFILE_WFS = .not. DO_SIM_ONLY
+
+!  ###################################
+!  Set up operations (for Fourier = 0)
+!  ###################################
+
+      IF ( FOURIER .EQ. 0 ) THEN
+
+!   MISCSETUPS (4 subroutines)  :
+!       Performance Setup,
+!       Delta-M scaling,
+!       average-secant formulation,
+!       transmittance setup
+
+!  Prepare quasi-spherical attenuation
+
+        CALL TWOSTREAM_QSPREP &
+       ( MAXLAYERS, MAXBEAMS,                        & ! Dimensions
+         NLAYERS, NBEAMS, DO_PLANE_PARALLEL,         & ! Input
+         DELTAU_VERT, CHAPMAN_FACTORS, X0,           & ! Input
+         DO_DIRECTBEAM,                              & ! In/Out
+         INITIAL_TRANS, AVERAGE_SECANT,              & ! Output
+         LOCAL_CSZA, LAYER_PIS_CUTOFF,               & ! Output
+         DELTAU_SLANT, TAUSLANT,                     & ! Output
+         SOLAR_BEAM_OPDEP )                            ! Output
+
+!  Transmittances and Transmittance factors, !@@ Add flag for Observation Geometry
+!    !@@ Add Post-processing flag, 11/5/13
+
+        CALL TWOSTREAM_PREPTRANS &
+        ( MAXLAYERS, MAX_USER_STREAMS, MAXBEAMS,                      & ! Dimensions
+          DO_USER_OBSGEOMS, DO_POSTPROCESSING,                        & ! Input flags (2p1,2p3)
+          NLAYERS, N_USER_STREAMS, NBEAMS, DELTAU_VERT, USER_STREAMS, & ! Input
+          INITIAL_TRANS, AVERAGE_SECANT, LAYER_PIS_CUTOFF,            & ! Input
+          T_DELT_MUBAR, T_DELT_USERM, ITRANS_USERM )                    ! Output
+
+
+!  Linearization of the above two processes
+!    !@@ Add Post-processing flag, 11/5/13
+
+        IF ( DO_PROFILE_WFS ) THEN
+          CALL TWOSTREAM_LP_QSPREP &
+       ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,   & ! Dimensions
+         DO_POSTPROCESSING, NLAYERS, NBEAMS, N_USER_STREAMS,    & ! Inputs
+         DO_PLANE_PARALLEL, LAYER_VARY_FLAG, LAYER_VARY_NUMBER, & ! Inputs
+         DELTAU_VERT, L_DELTAU_VERT, CHAPMAN_FACTORS,           & ! Inputs
+         USER_STREAMS, T_DELT_USERM, LAYER_PIS_CUTOFF,          & ! Inputs
+         AVERAGE_SECANT, T_DELT_MUBAR,                          & ! Inputs
+         LP_INITIAL_TRANS, LP_AVERAGE_SECANT,                   & ! output
+         LP_T_DELT_MUBAR, L_T_DELT_USERM )                        ! output
+        ENDIF
+
+!  ** New, October 2011 **. Thermal setup wih linearizations
+
+        IF ( DO_INCLUDE_THERMEMISS ) THEN
+          IF ( DO_PROFILE_WFS  ) THEN
+            CALL TWOSTREAM_THERMALSETUP_PLUS &
+            ( MAXLAYERS, MAX_ATMOSWFS,                                 & ! Dimensions
+              NLAYERS, THERMAL_BB_INPUT,                               & ! Inputs
+              DO_PROFILE_WFS, LAYER_VARY_FLAG, LAYER_VARY_NUMBER,      & ! Inputs
+              OMEGA_TOTAL, DELTAU_VERT, L_OMEGA_TOTAL, L_DELTAU_VERT,  & ! Inputs
+              DELTAU_POWER, TCOM1, L_DELTAU_POWER, L_TCOM1 )             ! Outputs 
+          ELSE
+            CALL TWOSTREAM_THERMALSETUP &
+            ( MAXLAYERS,                                            & ! Dimensions
+              NLAYERS, OMEGA_TOTAL, DELTAU_VERT, THERMAL_BB_INPUT,  & ! Input
+              DELTAU_POWER, TCOM1 )                                   ! Output
+          ENDIF
+        ENDIF
+
+!   EMULT_MASTER  : Beam source function multipliers.
+!      !@@ Add alternative for Observational geometry
+!      !@@ 2p3. 11/5/13. Post-processing control
+
+        IF ( DO_SOLAR_SOURCES.and.DO_POSTPROCESSING ) THEN
+          IF ( DO_USER_OBSGEOMS ) THEN
+            CALL TWOSTREAM_EMULTMASTER_OBSGEO &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,          & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING,                     & ! Input
+              NLAYERS, NBEAMS, DELTAU_VERT,                   & ! Input
+              USER_STREAMS, T_DELT_MUBAR, T_DELT_USERM,       & ! Input
+              ITRANS_USERM, AVERAGE_SECANT, LAYER_PIS_CUTOFF, & ! Input
+              SIGMA_M, SIGMA_P, EMULT_HOPRULE,                & ! Output
+              EMULT_UP, EMULT_DN )                              ! Output
+          ELSE
+            CALL TWOSTREAM_EMULTMASTER &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,          & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING,                     & ! Input
+              NLAYERS, NBEAMS, N_USER_STREAMS, DELTAU_VERT,   & ! Input
+              USER_STREAMS, T_DELT_MUBAR, T_DELT_USERM,       & ! Input
+              ITRANS_USERM, AVERAGE_SECANT, LAYER_PIS_CUTOFF, & ! Input
+              SIGMA_M, SIGMA_P, EMULT_HOPRULE,                & ! Output
+              EMULT_UP, EMULT_DN )                              ! Output
+          ENDIF
+
+!  Linearization of these multipliers
+
+          IF ( DO_PROFILE_WFS ) THEN
+            IF ( DO_USER_OBSGEOMS ) THEN
+              CALL TWOSTREAM_LP_EMULTMASTER_OBSGEO &
+              ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,  & ! Dimensions
+                DO_UPWELLING, DO_DNWELLING, DO_PLANE_PARALLEL,        & ! inputs
+                NLAYERS, NBEAMS, LAYER_VARY_FLAG, LAYER_VARY_NUMBER,  & ! inputs
+                DELTAU_VERT, L_DELTAU_VERT,                           & ! inputs
+                USER_STREAMS, T_DELT_MUBAR, T_DELT_USERM,             & ! inputs
+                ITRANS_USERM, LAYER_PIS_CUTOFF,                       & ! inputs
+                LP_INITIAL_TRANS, LP_AVERAGE_SECANT,                  & ! inputs
+                LP_T_DELT_MUBAR,  L_T_DELT_USERM,                     & ! inputs
+                SIGMA_M, SIGMA_P, EMULT_HOPRULE, EMULT_UP, EMULT_DN,  & ! inputs
+                LP_EMULT_UP, LP_EMULT_DN )                              ! output
+           ELSE
+              CALL TWOSTREAM_LP_EMULTMASTER &
+              ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,  & ! Dimensions
+                DO_UPWELLING, DO_DNWELLING, DO_PLANE_PARALLEL,        & ! inputs
+                NLAYERS, NBEAMS, N_USER_STREAMS,                      & ! inputs
+                LAYER_VARY_FLAG, LAYER_VARY_NUMBER,                   & ! inputs
+                DELTAU_VERT, L_DELTAU_VERT,                           & ! inputs
+                USER_STREAMS, T_DELT_MUBAR, T_DELT_USERM,             & ! inputs
+                ITRANS_USERM, LAYER_PIS_CUTOFF, INITIAL_TRANS,        & ! inputs
+                LP_INITIAL_TRANS, LP_AVERAGE_SECANT,                  & ! inputs
+                LP_T_DELT_MUBAR,  L_T_DELT_USERM,                     & ! inputs
+                SIGMA_M, SIGMA_P, EMULT_HOPRULE, EMULT_UP, EMULT_DN,  & ! inputs
+                LP_EMULT_UP, LP_EMULT_DN )                              ! output
+            ENDIF
+          ENDIF
+
+        ENDIF
+
+!  End setups operation
+
+      ENDIF
+
+!  Reflected Direct beam attenuation
+
+      CALL TWOSTREAM_DIRECTBEAM & 
+          ( MAXBEAMS,                                   & ! Dimensions
+            DO_INCLUDE_SURFACE, DO_BRDF_SURFACE,        & ! Input
+            NBEAMS, FOURIER, FLUX_FACTOR, X0,           & ! Input
+            DELTA_FACTOR, ALBEDO, BRDF_F_0,             & ! Input
+            SOLAR_BEAM_OPDEP, DO_DIRECTBEAM,            & ! Input
+            ATMOS_ATTN, DIRECT_BEAM )                     ! Output
+
+!  Auxiliary Geometry
+!  ! @@2p3, 11/5/13/ add Post-processing flag
+
+      CALL TWOSTREAM_AUXGEOM &
+      ( MAX_USER_STREAMS, MAXBEAMS, DO_POSTPROCESSING, & ! Dimensions, Flag (2p3
+        N_USER_STREAMS, NBEAMS, FOURIER, & ! Input
+        X0, USER_STREAMS, STREAM_VALUE,  & ! Input
+        PX11, PXSQ, POX, PX0X, ULP )       ! Output
+
+!  #########################################
+!   RTE HOMOGENEOUS SOLUTIONS and BVP SETUP
+!  #########################################
+
+!  Start layer loop
+
+      DO N = 1, NLAYERS
+
+!  Get Discrete ordinate solutions for this layer
+
+        CALL TWOSTREAM_HOM_SOLUTION &
+          ( MAXLAYERS,                               & ! Dimensions
+            N, FOURIER, STREAM_VALUE, PXSQ,          & ! Input
+            OMEGA_TOTAL, ASYMM_TOTAL, DELTAU_VERT,   & ! Input
+            SAB, DAB, EIGENVALUE, EIGENTRANS,        & ! In/Out
+            XPOS, XNEG )                               ! In/Out
+
+!  Get Post-processing ("user") solutions for this layer
+!   !@@ 2p3. 11/5/13. Post-processing control
+
+        IF ( DO_POSTPROCESSING ) THEN
+           CALL TWOSTREAM_HOM_USERSOLUTION &
+            ( MAXLAYERS, MAX_USER_STREAMS,                             & ! Dimensions
+              N_USER_STREAMS, N, FOURIER, STREAM_VALUE, PX11,          & ! Input
+              USER_STREAMS, ULP, XPOS, OMEGA_TOTAL, ASYMM_TOTAL,       & ! Input
+              U_XPOS, U_XNEG, &                                          ! In/Out
+              U_HELP_P, U_HELP_M )                                       ! Output
+        ENDIF
+
+!  Parameter control Indexing
+
+        IF ( DO_PROFILE_WFS ) THEN
+           DOVARY = LAYER_VARY_FLAG(N)
+           NVARY  = LAYER_VARY_NUMBER(N)
+        ENDIF
+
+!  Additional Solutions for Linearization
+
+        IF ( DO_PROFILE_WFS ) THEN
+
+          CALL TWOSTREAM_L_HOM_SOLUTION &
+         ( MAXLAYERS, MAX_ATMOSWFS,                       & ! Dimensions
+           N, FOURIER, DOVARY, NVARY, STREAM_VALUE, PXSQ, & ! Input
+           OMEGA_TOTAL, ASYMM_TOTAL, DELTAU_VERT,         & ! Input
+           L_OMEGA_TOTAL, L_ASYMM_TOTAL, L_DELTAU_VERT,   & ! Input
+           SAB, DAB, EIGENVALUE, EIGENTRANS,              & ! Input
+           L_EIGENVALUE, L_EIGENTRANS,                    & ! In/Out
+           L_SAB, L_DAB, L_XPOS, L_XNEG )                   ! In/Out
+
+!   !@@ 2p3. 11/5/13. Post-processing control
+
+          IF ( DO_POSTPROCESSING ) THEN
+            CALL TWOSTREAM_L_HOM_USERSOLUTION &
+           ( MAXLAYERS, MAX_USER_STREAMS, MAX_ATMOSWFS,     & ! Dimensions
+             N_USER_STREAMS, N, FOURIER, DOVARY, NVARY,     & ! Input
+             STREAM_VALUE, PX11, USER_STREAMS, ULP, L_XPOS, & ! Input
+             U_HELP_P, U_HELP_M, OMEGA_TOTAL, ASYMM_TOTAL,  & ! Input
+             L_OMEGA_TOTAL, L_ASYMM_TOTAL,                  & ! Input
+             L_U_XPOS, L_U_XNEG )                             ! In/Out
+          ENDIF
+
+        ENDIF
+
+!  end layer loop
+
+      ENDDO
+
+!  Prepare homogeneous solution multipliers
+!   !@@ 2p3. 11/5/13. Post-processing control
+
+      IF ( DO_POSTPROCESSING ) THEN
+
+!  regular multipliers
+
+        CALL TWOSTREAM_HMULT_MASTER &
+           ( MAXLAYERS, MAX_USER_STREAMS,           & ! Dimensions
+             NLAYERS, N_USER_STREAMS, USER_STREAMS, & ! Input
+             EIGENVALUE, EIGENTRANS, T_DELT_USERM,  & ! Input
+             ZETA_M, ZETA_P, HMULT_1, HMULT_2 )       ! Output
+
+!  LInearized multipliers
+
+        IF ( DO_PROFILE_WFS ) THEN
+          CALL TWOSTREAM_L_HMULT_MASTER &
+          ( MAXLAYERS, MAX_USER_STREAMS, MAX_ATMOSWFS,          & ! DImensions
+            NLAYERS, N_USER_STREAMS,                            & ! inputs
+            LAYER_VARY_FLAG, LAYER_VARY_NUMBER,                 & ! inputs
+            EIGENTRANS, USER_STREAMS, T_DELT_USERM,             & ! inputs
+            ZETA_M, ZETA_P, HMULT_1, HMULT_2,                   & ! inputs
+            L_EIGENVALUE, L_EIGENTRANS, L_T_DELT_USERM,         & ! inputs
+            L_HMULT_1, L_HMULT_2 )                                ! Output
+        ENDIF
+
+      ENDIF
+
+!  Boundary value problem - MATRIX PREPARATION (Pentadiagonal solution)
+
+      CALL TWOSTREAM_BVP_MATSETUP_PENTADIAG &
+         ( MAXLAYERS, MAXTOTAL,                                     & ! Dimensions
+           DO_INCLUDE_SURFACE, FOURIER, NLAYERS, NTOTAL,            & ! Input
+           DO_BRDF_SURFACE, SURFACE_FACTOR, ALBEDO, BRDF_F,         & ! Input
+           XPOS, XNEG, EIGENTRANS, STREAM_VALUE,                    & ! Input
+           H_HOMP, H_HOMM, MAT, ELM, SELM,                          & ! Output
+           STATUS_SUB, MESSAGE )                                      ! Output
+
+!  Exception handling for Pentadiagonal setup
+
+      IF ( STATUS_SUB .NE. 0 ) THEN
+        TRACE  = 'Call BVP_MATSETUP_PENTADIAG in 2S_L_FOURIER_MASTER'
+        STATUS = 1
+        RETURN
+      ENDIF
+
+!  Thermal solutions
+!     1. Find the Particular solution (NOT FOR transmittance only)
+!     2. Compute thermal layer source terms. (Upwelling and Downwelling)
+!       These will be scaled up by factor 4.pi if solar beams as well
+
+!   !@@ 2p3. 11/5/13. Post-processing control
+
+      IF ( DO_INCLUDE_THERMEMISS ) THEN
+
+        IF ( DO_PROFILE_WFS ) THEN
+
+          CALL TWOSTREAM_THERMALSOLUTION_PLUS &
+          ( MAXLAYERS, MAX_USER_STREAMS, MAX_ATMOSWFS,               & ! Dimensions
+            DO_POSTPROCESSING, DO_UPWELLING, DO_DNWELLING,           & ! Inputs
+            NLAYERS, N_USER_STREAMS, STREAM_VALUE, USER_STREAMS,     & ! Inputs
+            DO_PROFILE_WFS, LAYER_VARY_FLAG, LAYER_VARY_NUMBER,      & ! Input
+            OMEGA_TOTAL, ASYMM_TOTAL, SAB, DAB, DELTAU_POWER,        & ! Input
+            TCOM1, L_OMEGA_TOTAL, L_ASYMM_TOTAL,                     & ! Inputs
+            L_SAB, L_DAB, L_DELTAU_POWER, L_TCOM1,                   & ! Inputs
+            T_WUPPER, T_WLOWER, U_TPOS2, U_TNEG2,                    & ! Outputs
+            L_T_WUPPER, L_T_WLOWER, L_U_TPOS2, L_U_TNEG2 )             ! Outputs
+
+          IF ( DO_POSTPROCESSING ) THEN
+            CALL TWOSTREAM_THERMALSTERMS_PLUS &
+            ( MAXLAYERS, MAX_USER_STREAMS, MAX_ATMOSWFS,            & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING, DO_SOLAR_SOURCES,         & ! Inputs
+              NLAYERS, N_USER_STREAMS, PI4, USER_STREAMS,           & ! Inputs
+              DO_PROFILE_WFS, LAYER_VARY_FLAG, LAYER_VARY_NUMBER,   & ! Input
+              T_DELT_USERM, DELTAU_POWER, U_TPOS2, U_TNEG2,         & ! Input
+              L_T_DELT_USERM, L_DELTAU_POWER, L_U_TPOS2, L_U_TNEG2, & ! Input
+              LAYER_TSUP_UP, LAYER_TSUP_DN,                         & ! Outputs
+              L_LAYER_TSUP_UP, L_LAYER_TSUP_DN  )                     ! Outputs
+          ENDIF
+
+        ELSE
+
+          CALL TWOSTREAM_THERMALSOLUTION &
+          ( MAXLAYERS, MAX_USER_STREAMS, DO_POSTPROCESSING,        & ! Dimensions
+            DO_UPWELLING, DO_DNWELLING, NLAYERS, N_USER_STREAMS,  & ! Input
+            STREAM_VALUE, USER_STREAMS, OMEGA_TOTAL, ASYMM_TOTAL, & ! Input
+            SAB, DAB, DELTAU_POWER, TCOM1,                        & ! Input
+            T_WUPPER, T_WLOWER, U_TPOS2, U_TNEG2 )                  ! Output
+
+          IF ( DO_POSTPROCESSING ) THEN
+            CALL TWOSTREAM_THERMALSTERMS &
+            ( MAXLAYERS, MAX_USER_STREAMS,                    & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING, DO_SOLAR_SOURCES,   & ! Input
+              NLAYERS, N_USER_STREAMS, PI4, USER_STREAMS,     & ! Input
+              T_DELT_USERM, DELTAU_POWER, U_TPOS2, U_TNEG2,   & ! Input
+              LAYER_TSUP_UP, LAYER_TSUP_DN  )                   ! Output
+          ENDIF
+
+        ENDIF
+
+      ENDIF
+
+!  Skip the thermal-only section if there are solar sources
+
+      IF ( DO_SOLAR_SOURCES ) GO TO 455
+
+!  ####################################################
+!  Complete Radiation Field with Thermal-only solutions
+!  ####################################################
+
+!  Only one solution, local direct_beam flag NOT set
+
+      IBEAM = 1
+      DO_INCLUDE_DIRECTBEAM = .FALSE. ; DBEAM = .false.
+
+!  set the BVP PI solution at the lower/upper boundaries
+
+      DO N = 1, NLAYERS
+         DO I = 1, 2
+            WUPPER(I,N) = T_WUPPER(I,N)
+            WLOWER(I,N) = T_WLOWER(I,N)
+         ENDDO
+      ENDDO
+
+!  Solve boundary value problem (Pentadiagonal solution)
+
+      CALL TWOSTREAM_BVP_SOLUTION_PENTADIAG &
+      ( MAXLAYERS, MAXBEAMS, MAXTOTAL,                       & ! Dimensions
+        DO_INCLUDE_SURFACE, DO_INCLUDE_DIRECTBEAM,           & ! Input
+        DO_INCLUDE_SURFEMISS, DO_BRDF_SURFACE,               & ! Input
+        FOURIER, IBEAM, NLAYERS, NTOTAL,                     & ! Input
+        SURFACE_FACTOR, ALBEDO, BRDF_F, EMISSIVITY, SURFBB,  & ! Input
+        DIRECT_BEAM, XPOS, XNEG, WUPPER, WLOWER,             & ! Input
+        STREAM_VALUE, MAT, ELM, SELM,                        & ! Input
+        H_PARTIC, LCON, MCON, LCON_XVEC, MCON_XVEC )           ! Output
+
+!  upwelling, MSMODE only, no Direct Beam inclusion.
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+      IF ( DO_UPWELLING .and. DO_POSTPROCESSING ) THEN
+
+        CALL TWOSTREAM_UPUSER_INTENSITY &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,                   & ! Dimensions
+              DO_INCLUDE_SURFACE, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,   & ! Input !@@ 2p1
+              DO_SOLAR_SOURCES, DO_INCLUDE_THERMEMISS, DO_2S_LEVELOUT, & ! Input !@@ 2p2
+              FOURIER, IBEAM, NLAYERS, N_USER_STREAMS,                 & ! Input
+              SURFACE_FACTOR, ALBEDO, UBRDF_F,                         & ! Input
+              FLUX_MULTIPLIER, PI4, T_DELT_USERM, STREAM_VALUE,        & ! Input
+              EIGENTRANS, LCON, LCON_XVEC, MCON, MCON_XVEC,            & ! Input
+              WLOWER, U_XPOS, U_XNEG, U_WPOS2,                         & ! Input
+              HMULT_1, HMULT_2, EMULT_UP, LAYER_TSUP_UP,               & ! Input
+              IDOWNSURF, INTENSITY_F_UP, RADLEVEL_F_UP, CUMSOURCE_UP )   ! Output !@@ 2p2
+      ENDIF
+
+!  Downwelling, MSMODE only,
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+      IF ( DO_DNWELLING .and. DO_POSTPROCESSING ) THEN
+        CALL TWOSTREAM_DNUSER_INTENSITY &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,                     & ! Dimensions
+              DO_INCLUDE_THERMEMISS, DO_SOLAR_SOURCES,                   & ! Dimensions
+              DO_USER_OBSGEOMS, DO_2S_LEVELOUT,                          & ! Inputs !@@ 2p1, 2p2
+              FOURIER, IBEAM, NLAYERS, N_USER_STREAMS,                   & ! Input
+              FLUX_MULTIPLIER, PI4, T_DELT_USERM,                        & ! Input
+              LCON, MCON, U_XPOS, U_XNEG, U_WNEG2,                       & ! Input
+              HMULT_1, HMULT_2, EMULT_DN, LAYER_TSUP_DN,                 & ! Input
+              INTENSITY_F_DN, RADLEVEL_F_DN, CUMSOURCE_DN )                ! Output !@@ 2p2
+      ENDIF
+
+!  Flux output. New Subroutine, 11/5/13 Version 2.3
+
+      IF ( DO_INCLUDE_MVOUT ) THEN
+        CALL TWOSTREAM_FLUXES &
+          ( MAXBEAMS, MAXLAYERS, MAXTHREADS, DO_UPWELLING, DO_DNWELLING, & ! Input  Dimensions, flags
+            IBEAM, NLAYERS, THREAD, PI4, STREAM_VALUE, FLUX_MULTIPLIER,  & ! Input Control
+            LCON_XVEC, MCON_XVEC, EIGENTRANS, WUPPER, WLOWER,            & ! Input 2-stream solution
+            FLUXES_TOA, FLUXES_BOA )                                       ! Output
+      ENDIF
+
+!  Thermal-only: Atmospheric profile linearization
+!  -----------------------------------------------
+
+      IF ( DO_PROFILE_WFS ) THEN
+
+!  Start over layers that will contain variations
+!    - Set flag for variation of layer, and number of variations
+
+        DO NV = 1, NLAYERS
+          IF ( LAYER_VARY_FLAG(NV) ) THEN
+            NVARY = LAYER_VARY_NUMBER(NV)
+
+!  Solve the linearized boundary value problem
+
+            CALL TWOSTREAM_BVP_LP_SOLUTION_MASTER &
+            ( MAXLAYERS, MAXTOTAL, MAXBEAMS, MAX_ATMOSWFS,                   & ! Dimensions
+              DBEAM, DO_PLANE_PARALLEL, DO_INCLUDE_THERMEMISS,               & ! Input
+              DO_SOLAR_SOURCES, DO_INCLUDE_SURFACE, DO_BRDF_SURFACE,         & ! Input
+              FOURIER, IBEAM, NLAYERS, NTOTAL, NV, NVARY,                    & ! inputs
+              SURFACE_FACTOR, ALBEDO, BRDF_F, STREAM_VALUE,                  & ! inputs
+              DIRECT_BEAM, CHAPMAN_FACTORS,INITIAL_TRANS, T_DELT_MUBAR,      & ! inputs
+              WVEC, EIGENTRANS, XPOS, XNEG, LCON, MCON,MAT, ELM, SELM,       & ! inputs
+              L_DELTAU_VERT, LP_INITIAL_TRANS, LP_T_DELT_MUBAR,              & ! inputs
+              L_EIGENTRANS, L_XPOS, L_XNEG, LP_WVEC, L_T_WUPPER, L_T_WLOWER, & ! inputs
+              L_WUPPER, L_WLOWER, COL2_WF, SCOL2_WF,                         & ! Output
+              NCON, PCON, NCON_XVEC, PCON_XVEC )                               ! Output
+
+!  Post-processing for the Upwelling PROFILE weighting functions
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+            IF ( DO_UPWELLING .and. DO_POSTPROCESSING ) THEN
+              CALL TWOSTREAM_UPUSER_PROFILEWF & 
+             ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,            & ! Dimensions
+               DO_INCLUDE_SURFACE, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,          & ! inputs !@@ 2p1 
+               DO_SOLAR_SOURCES, DO_INCLUDE_THERMEMISS, DO_2S_LEVELOUT,        & ! inputs !@@ 2p2
+               FOURIER, IBEAM, NLAYERS, N_USER_STREAMS, NV, NVARY, PI4,        & ! input
+               FLUX_MULTIPLIER, SURFACE_FACTOR, ALBEDO, UBRDF_F, STREAM_VALUE, & ! input
+               EIGENTRANS, T_DELT_USERM, L_EIGENTRANS, L_T_DELT_USERM,         & ! input
+               L_XPOS, L_XNEG, L_WLOWER, LCON, MCON, NCON, PCON, LCON_XVEC,    & ! input
+               NCON_XVEC, PCON_XVEC, U_XPOS, U_XNEG, U_WPOS2, L_U_XPOS,        & ! input
+               L_U_XNEG, LP_U_WPOS2, HMULT_1, HMULT_2, EMULT_UP, CUMSOURCE_UP, & ! input
+               L_HMULT_1, L_HMULT_2, LP_EMULT_UP, L_LAYER_TSUP_UP,             & ! input
+               PROFILEWF_F_UP, PROFJACLEVEL_F_UP )                               ! Output !@@ 2p2
+            ENDIF
+
+!  Post-processing for the Downwelling PROFILE weighting functions
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+            IF ( DO_DNWELLING .and. DO_POSTPROCESSING) THEN
+              CALL TWOSTREAM_DNUSER_PROFILEWF &
+             ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,       & ! Dimensions
+               DO_INCLUDE_THERMEMISS, DO_SOLAR_SOURCES,                   & ! Dimensions
+               DO_USER_OBSGEOMS, DO_2S_LEVELOUT,                          & ! Inputs !@@ 2p1, 2p2
+               FOURIER, IBEAM, NLAYERS, N_USER_STREAMS, NV, NVARY, PI4,   & ! input
+               FLUX_MULTIPLIER, T_DELT_USERM, L_T_DELT_USERM,             & ! input
+               LCON, MCON, NCON, PCON, U_XPOS, U_XNEG, U_WNEG2,           & ! input
+               L_U_XPOS, L_U_XNEG, LP_U_WNEG2, HMULT_1, HMULT_2,          & ! input
+               EMULT_DN, CUMSOURCE_DN, L_HMULT_1, L_HMULT_2,              & ! input
+               LP_EMULT_DN, L_LAYER_TSUP_DN,                              & ! input
+               PROFILEWF_F_DN, PROFJACLEVEL_F_DN )                          ! Output !@@ 2p2
+            ENDIF
+
+!  Flux output. New Subroutine, 11/5/13 Version 2.3
+
+            IF ( DO_INCLUDE_MVOUT ) THEN
+              CALL TWOSTREAM_FLUXES_PROFILEWF &
+              ( MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS, MAXTHREADS,      & ! Dimensions
+                DO_UPWELLING, DO_DNWELLING, IBEAM, NLAYERS, THREAD, & ! Input flags/Control
+                NV, NVARY, PI4, STREAM_VALUE, FLUX_MULTIPLIER,      & ! Input Control
+                LCON, MCON, LCON_XVEC, MCON_XVEC,                   & ! Input 2-stream solution
+                NCON_XVEC, PCON_XVEC, L_XPOS, L_XNEG,               & ! Input 2-stream solution Linearized
+                EIGENTRANS, L_EIGENTRANS, L_WUPPER, L_WLOWER,       & ! Input 2-stream solution linearized
+                PROFJACFLUXES_TOA, PROFJACFLUXES_BOA )                ! Output
+            ENDIF
+
+!  Finish loop over layers with variation
+
+          ENDIF
+        ENDDO
+
+!  End PROFILE atmospheric weighting functions
+
+      ENDIF
+
+!  Surface Reflectance weighting functions
+!  ---------------------------------------
+
+      IF ( DO_SURFACE_WFS .and. DO_INCLUDE_SURFACE ) THEN
+
+!  Solve the linearized boundary problem (pentadiagonal solution)
+
+        CALL TWOSTREAM_BVP_LS_SOLUTION_MASTER &
+            ( MAXLAYERS, MAXTOTAL, MAXBEAMS, MAX_SURFACEWFS,  & ! Dimensions
+              DO_INCLUDE_DIRECTBEAM, DO_INCLUDE_SURFEMISS,    & ! inputs
+              DO_BRDF_SURFACE, FOURIER, IBEAM, N_SURFACE_WFS, & ! inputs
+              NLAYERS, NTOTAL, ATMOS_ATTN,                    & ! inputs
+              SURFACE_FACTOR, SURFBB, LS_BRDF_F, LS_BRDF_F_0, & ! inputs
+              LS_EMISSIVITY, MAT, ELM, SELM, LCON, MCON,      & ! inputs
+              EIGENTRANS, H_HOMP, H_HOMM, H_PARTIC,           & ! inputs
+              COL2_WFALB, SCOL2_WFALB, NCONALB, PCONALB )       ! Output
+
+!  Get the weighting functions
+!    -- MS Mode only, do not require Direct-beam contributions.
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+        IF ( DO_POSTPROCESSING ) THEN
+          CALL TWOSTREAM_SURFACEWF &
+           ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_SURFACEWFS,              & ! Dimensions
+             DO_UPWELLING, DO_DNWELLING, DO_SOLAR_SOURCES, DO_USER_OBSGEOMS,     & ! inputs  !@@ 2p1
+             DO_2S_LEVELOUT, DO_BRDF_SURFACE, FOURIER, IBEAM, NLAYERS,           & ! inputs  !@@ 2p2
+             N_USER_STREAMS, N_SURFACE_WFS, ALBEDO, UBRDF_F, LS_UBRDF_F,         & ! inputs
+             SURFACE_FACTOR, FLUX_MULTIPLIER, STREAM_VALUE, IDOWNSURF,           & ! inputs
+             EIGENTRANS, T_DELT_USERM, XPOS, XNEG, NCONALB,                      & ! inputs
+             PCONALB, U_XPOS, U_XNEG, HMULT_1, HMULT_2,                          & ! inputs
+             SURFACEWF_F_UP,    SURFACEWF_F_DN,                                  & ! Output
+             SURFJACLEVEL_F_UP, SURFJACLEVEL_F_DN )                                ! Output   !@@ 2p2
+        ENDIF
+
+!  Flux output. New Subroutine, 11/5/13 Version 2.3
+
+        IF ( DO_INCLUDE_MVOUT ) THEN
+          CALL TWOSTREAM_FLUXES_SURFACEWF &
+            ( MAXBEAMS, MAXLAYERS, MAX_SURFACEWFS, MAXTHREADS,    & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING, IBEAM, NLAYERS, THREAD, & ! Input flags/Control
+              N_SURFACE_WFS, PI4, STREAM_VALUE, FLUX_MULTIPLIER,  & ! Input Control
+              NCONALB, PCONALB, XPOS, XNEG, EIGENTRANS,           & ! Input 2-stream solution
+              SURFJACFLUXES_TOA, SURFJACFLUXES_BOA )                  ! Output
+        ENDIF
+
+      ENDIF
+
+!  Finish Thermal only.
+
+      RETURN
+
+!  ##################################################
+!  Complete Radiation Field with Solar Beam solutions
+!  ##################################################
+
+!  Continuation point
+
+ 455  CONTINUE
+
+!  Start loop over various solar beams
+
+      DO IBEAM = 1, NBEAMS
+
+!  Solar beam Particular solution
+!  ------------------------------
+
+!  start layer loop
+
+        DO N = 1, NLAYERS
+
+!  Parameter control Indexing
+
+          IF ( DO_PROFILE_WFS ) THEN
+            DOVARY = LAYER_VARY_FLAG(N)
+            NVARY  = LAYER_VARY_NUMBER(N)
+          ENDIF
+
+!  stream solution
+
+          CALL TWOSTREAM_BEAM_SOLUTION &
+          ( MAXLAYERS, MAXBEAMS,                               & ! Dimensions
+            N, FOURIER, IBEAM,                                 & ! Input
+            FLUX_FACTOR, LAYER_PIS_CUTOFF, STREAM_VALUE, PX0X, & ! Input
+            AVERAGE_SECANT, INITIAL_TRANS, T_DELT_MUBAR,       & ! Input
+            OMEGA_TOTAL, ASYMM_TOTAL, SAB, DAB, EIGENVALUE,    & ! Input
+            QSUMVEC, QDIFVEC, QVEC, WVEC, WUPPER, WLOWER )       ! In/Out
+
+!  Linearized solution
+
+          IF ( DO_PROFILE_WFS ) THEN
+            CALL TWOSTREAM_LP_BEAM_SOLUTION &
+            ( MAXLAYERS, MAXBEAMS, MAX_ATMOSWFS,                      & ! DImensions
+              DO_PLANE_PARALLEL, N, FOURIER, IBEAM, FLUX_FACTOR,      & ! Input
+              LAYER_PIS_CUTOFF, STREAM_VALUE, PX0X,                   & ! Input
+              LAYER_VARY_FLAG, LAYER_VARY_NUMBER,                     & ! Input
+              OMEGA_TOTAL, ASYMM_TOTAL, L_OMEGA_TOTAL, L_ASYMM_TOTAL, & ! Input
+              SAB, DAB, EIGENVALUE, AVERAGE_SECANT,                   & ! Input
+              QSUMVEC, QDIFVEC, QVEC,                                 & ! Input
+              LP_AVERAGE_SECANT, L_SAB, L_DAB, L_EIGENVALUE,          & ! Input
+              LP_WVEC )                                                 ! In/Out
+         ENDIF
+
+!  user solutions. !@@ 2p1, Additional option for Observation Geometry, 12/21/12
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+          IF (  DO_POSTPROCESSING ) THEN
+            CALL TWOSTREAM_BEAM_USERSOLUTION &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,             & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING, DO_USER_OBSGEOMS,      & ! Input !@@
+              N_USER_STREAMS, N, FOURIER, IBEAM,                 & ! Input
+              FLUX_FACTOR, LAYER_PIS_CUTOFF, STREAM_VALUE, PX11, & ! Input
+              OMEGA_TOTAL, ASYMM_TOTAL, USER_STREAMS, ULP, WVEC, & ! Input
+              U_WPOS2, U_WNEG2, &                                  ! In/Out
+              W_HELP )                                             ! Output
+          ENDIF
+
+!  Linearized user solutions. !@@ 2p1, Additional option for Observation Geometry, 12/21/12
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+          IF (  DO_POSTPROCESSING ) THEN
+            IF ( DO_PROFILE_WFS ) THEN
+              CALL TWOSTREAM_LP_BEAM_USERSOLUTION &
+              ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,             & ! Dimensions
+                DO_UPWELLING, DO_DNWELLING, DO_USER_OBSGEOMS, DO_PLANE_PARALLEL, & ! Input
+                N_USER_STREAMS, N, FOURIER, IBEAM,                               & ! Input
+                LAYER_VARY_FLAG, LAYER_VARY_NUMBER,                              & ! Input
+                FLUX_FACTOR, LAYER_PIS_CUTOFF, USER_STREAMS, STREAM_VALUE,       & ! Input
+                PX11, ULP, OMEGA_TOTAL, ASYMM_TOTAL, L_OMEGA_TOTAL,              & ! Input
+                L_ASYMM_TOTAL, W_HELP, LP_WVEC,                                  & ! Input
+                LP_U_WPOS2, LP_U_WNEG2 )                                           ! In/Out
+            ENDIF
+          ENDIF
+
+!  end layer loop
+
+        END DO
+
+!  Add thermal solutions if flagged. NO modulus on the thermal contribution.
+
+        IF ( DO_INCLUDE_THERMEMISS ) THEN
+          DO N = 1, NLAYERS
+            DO I = 1, 2
+              WUPPER(I,N) = WUPPER(I,N) + T_WUPPER(I,N)
+              WLOWER(I,N) = WLOWER(I,N) + T_WLOWER(I,N)
+            ENDDO
+          ENDDO
+        ENDIF
+
+!  Solve boundary value problem (Pentadiagonal solution)
+!  ----------------------------
+
+        CALL TWOSTREAM_BVP_SOLUTION_PENTADIAG &
+      ( MAXLAYERS, MAXBEAMS, MAXTOTAL,                       & ! Dimensions
+        DO_INCLUDE_SURFACE, DO_DIRECTBEAM(IBEAM),            & ! Input
+        DO_INCLUDE_SURFEMISS, DO_BRDF_SURFACE,               & ! Input
+        FOURIER, IBEAM, NLAYERS, NTOTAL,                     & ! Input
+        SURFACE_FACTOR, ALBEDO, BRDF_F, EMISSIVITY, SURFBB,  & ! Input
+        DIRECT_BEAM, XPOS, XNEG, WUPPER, WLOWER,             & ! Input
+        STREAM_VALUE, MAT, ELM, SELM,                        & ! Input
+        H_PARTIC, LCON, MCON, LCON_XVEC, MCON_XVEC )           ! Output
+
+! ##################################
+!   Radiance Field Post Processing
+! ##################################
+
+!  upwelling, MSMODE only, no Direct Beam inclusion
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+        IF ( DO_UPWELLING .and. DO_POSTPROCESSING ) THEN
+          CALL TWOSTREAM_UPUSER_INTENSITY &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,                   & ! Dimensions
+              DO_INCLUDE_SURFACE, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,   & ! Input !@@ 2p1
+              DO_SOLAR_SOURCES, DO_INCLUDE_THERMEMISS, DO_2S_LEVELOUT, & ! Input !@@ 2p2
+              FOURIER, IBEAM, NLAYERS, N_USER_STREAMS,                 & ! Input
+              SURFACE_FACTOR, ALBEDO, UBRDF_F,                         & ! Input
+              FLUX_MULTIPLIER, PI4, T_DELT_USERM, STREAM_VALUE,        & ! Input
+              EIGENTRANS, LCON, LCON_XVEC, MCON, MCON_XVEC,            & ! Input
+              WLOWER, U_XPOS, U_XNEG, U_WPOS2,                         & ! Input
+              HMULT_1, HMULT_2, EMULT_UP, LAYER_TSUP_UP,               & ! Input
+              IDOWNSURF, INTENSITY_F_UP, RADLEVEL_F_UP, CUMSOURCE_UP )   ! Output !@@ 2p2
+        ENDIF
+
+!  Downwelling, MSMODE only,
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+        IF ( DO_DNWELLING .and. DO_POSTPROCESSING ) THEN
+          CALL TWOSTREAM_DNUSER_INTENSITY &
+            ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS,                     & ! Dimensions
+              DO_INCLUDE_THERMEMISS, DO_SOLAR_SOURCES,                   & ! Dimensions
+              DO_USER_OBSGEOMS, DO_2S_LEVELOUT,                          & ! Inputs !@@ 2p1, 2p2
+              FOURIER, IBEAM, NLAYERS, N_USER_STREAMS,                   & ! Input
+              FLUX_MULTIPLIER, PI4, T_DELT_USERM,                        & ! Input
+              LCON, MCON, U_XPOS, U_XNEG, U_WNEG2,                       & ! Input
+              HMULT_1, HMULT_2, EMULT_DN, LAYER_TSUP_DN,                 & ! Input
+              INTENSITY_F_DN, RADLEVEL_F_DN, CUMSOURCE_DN )                ! Output !@@ 2p2
+        ENDIF
+
+!  Flux output. New Subroutine, 11/5/13 Version 2.3
+
+        IF ( DO_INCLUDE_MVOUT ) THEN
+          CALL TWOSTREAM_FLUXES &
+            ( MAXBEAMS, MAXLAYERS, MAXTHREADS, DO_UPWELLING, DO_DNWELLING, & ! Input  Dimensions, flags
+              IBEAM, NLAYERS, THREAD, PI4, STREAM_VALUE, FLUX_MULTIPLIER,  & ! Input Control
+              LCON_XVEC, MCON_XVEC, EIGENTRANS, WUPPER, WLOWER,            & ! Input 2-stream solution
+              FLUXES_TOA, FLUXES_BOA )                                       ! Output
+        ENDIF
+
+!  Finished this Beam solution, if only intensity is required
+
+        IF ( DO_SIM_ONLY ) GO TO 4000
+
+!  Step 3. Atmospheric Profile weighting function loop
+!  ---------------------------------------------------
+
+        IF ( DO_PROFILE_WFS ) THEN
+
+          DBEAM = DO_DIRECTBEAM(IBEAM)
+
+!  Start over layers that will contain variations
+!    - Set flag for variation of layer, and number of variations
+
+          DO NV = 1, NLAYERS
+           IF ( LAYER_VARY_FLAG(NV) ) THEN
+            NVARY = LAYER_VARY_NUMBER(NV)
+
+!  Solve the linearized boundary value problem
+
+            CALL TWOSTREAM_BVP_LP_SOLUTION_MASTER &
+            ( MAXLAYERS, MAXTOTAL, MAXBEAMS, MAX_ATMOSWFS,                   & ! Dimensions
+              DBEAM, DO_PLANE_PARALLEL, DO_INCLUDE_THERMEMISS,               & ! Input
+              DO_SOLAR_SOURCES, DO_INCLUDE_SURFACE, DO_BRDF_SURFACE,         & ! Input
+              FOURIER, IBEAM, NLAYERS, NTOTAL, NV, NVARY,                    & ! inputs
+              SURFACE_FACTOR, ALBEDO, BRDF_F, STREAM_VALUE,                  & ! inputs
+              DIRECT_BEAM, CHAPMAN_FACTORS,INITIAL_TRANS, T_DELT_MUBAR,      & ! inputs
+              WVEC, EIGENTRANS, XPOS, XNEG, LCON, MCON,MAT, ELM, SELM,       & ! inputs
+              L_DELTAU_VERT, LP_INITIAL_TRANS, LP_T_DELT_MUBAR,              & ! inputs
+              L_EIGENTRANS, L_XPOS, L_XNEG, LP_WVEC, L_T_WUPPER, L_T_WLOWER, & ! inputs
+              L_WUPPER, L_WLOWER, COL2_WF, SCOL2_WF,                         & ! Output
+              NCON, PCON, NCON_XVEC, PCON_XVEC )                               ! Output
+
+!  Post-processing for the Upwelling PROFILE weighting functions
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+            IF ( DO_UPWELLING .and. DO_POSTPROCESSING ) THEN
+              CALL TWOSTREAM_UPUSER_PROFILEWF & 
+             ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,            & ! Dimensions
+               DO_INCLUDE_SURFACE, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,          & ! inputs !@@ 2p1 
+               DO_SOLAR_SOURCES, DO_INCLUDE_THERMEMISS, DO_2S_LEVELOUT,        & ! inputs !@@ 2p2
+               FOURIER, IBEAM, NLAYERS, N_USER_STREAMS, NV, NVARY, PI4,        & ! input
+               FLUX_MULTIPLIER, SURFACE_FACTOR, ALBEDO, UBRDF_F, STREAM_VALUE, & ! input
+               EIGENTRANS, T_DELT_USERM, L_EIGENTRANS, L_T_DELT_USERM,         & ! input
+               L_XPOS, L_XNEG, L_WLOWER, LCON, MCON, NCON, PCON, LCON_XVEC,    & ! input
+               NCON_XVEC, PCON_XVEC, U_XPOS, U_XNEG, U_WPOS2, L_U_XPOS,        & ! input
+               L_U_XNEG, LP_U_WPOS2, HMULT_1, HMULT_2, EMULT_UP, CUMSOURCE_UP, & ! input
+               L_HMULT_1, L_HMULT_2, LP_EMULT_UP, L_LAYER_TSUP_UP,             & ! input
+               PROFILEWF_F_UP, PROFJACLEVEL_F_UP )                               ! Output !@@ 2p2
+            ENDIF
+
+!  Post-processing for the Downwelling PROFILE weighting functions
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+            IF ( DO_DNWELLING .and. DO_POSTPROCESSING ) THEN
+              CALL TWOSTREAM_DNUSER_PROFILEWF &
+             ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_ATMOSWFS,       & ! Dimensions
+               DO_INCLUDE_THERMEMISS, DO_SOLAR_SOURCES,                   & ! Dimensions
+               DO_USER_OBSGEOMS, DO_2S_LEVELOUT,                          & ! Inputs !@@ 2p1, 2p2
+               FOURIER, IBEAM, NLAYERS, N_USER_STREAMS, NV, NVARY, PI4,   & ! input
+               FLUX_MULTIPLIER, T_DELT_USERM, L_T_DELT_USERM,             & ! input
+               LCON, MCON, NCON, PCON, U_XPOS, U_XNEG, U_WNEG2,           & ! input
+               L_U_XPOS, L_U_XNEG, LP_U_WNEG2, HMULT_1, HMULT_2,          & ! input
+               EMULT_DN, CUMSOURCE_DN, L_HMULT_1, L_HMULT_2,              & ! input
+               LP_EMULT_DN, L_LAYER_TSUP_DN,                              & ! input
+               PROFILEWF_F_DN, PROFJACLEVEL_F_DN )                          ! Output !@@ 2p2
+            ENDIF
+
+!  Flux output. New Subroutine, 11/5/13 Version 2.3
+
+            IF ( DO_INCLUDE_MVOUT ) THEN
+              CALL TWOSTREAM_FLUXES_PROFILEWF &
+              ( MAXBEAMS, MAXLAYERS, MAX_ATMOSWFS, MAXTHREADS,      & ! Dimensions
+                DO_UPWELLING, DO_DNWELLING, IBEAM, NLAYERS, THREAD, & ! Input flags/Control
+                NV, NVARY, PI4, STREAM_VALUE, FLUX_MULTIPLIER,      & ! Input Control
+                LCON, MCON, LCON_XVEC, MCON_XVEC,                   & ! Input 2-stream solution
+                NCON_XVEC, PCON_XVEC, L_XPOS, L_XNEG,               & ! Input 2-stream solution Linearized
+                EIGENTRANS, L_EIGENTRANS, L_WUPPER, L_WLOWER,       & ! Input 2-stream solution linearized
+                PROFJACFLUXES_TOA, PROFJACFLUXES_BOA )                ! Output
+            ENDIF
+
+!  Finish loop over layers with variation
+
+          ENDIF
+         ENDDO
+
+!  End PROFILE atmospheric weighting functions
+
+        ENDIF
+
+!  Step 5. Surface Reflectance weighting functions
+!  -----------------------------------------------
+
+        IF ( DO_SURFACE_WFS .and. DO_INCLUDE_SURFACE ) THEN
+
+!  Solve the linearized boundary problem (pentadiagonal solution)
+
+          CALL TWOSTREAM_BVP_LS_SOLUTION_MASTER &
+            ( MAXLAYERS, MAXTOTAL, MAXBEAMS, MAX_SURFACEWFS,  & ! Dimensions
+              DO_DIRECTBEAM(IBEAM), DO_INCLUDE_SURFEMISS,     & ! inputs
+              DO_BRDF_SURFACE, FOURIER, IBEAM, N_SURFACE_WFS, & ! inputs
+              NLAYERS, NTOTAL, ATMOS_ATTN,                    & ! inputs
+              SURFACE_FACTOR, SURFBB, LS_BRDF_F, LS_BRDF_F_0, & ! inputs
+              LS_EMISSIVITY, MAT, ELM, SELM, LCON, MCON,      & ! inputs
+              EIGENTRANS, H_HOMP, H_HOMM, H_PARTIC,           & ! inputs
+              COL2_WFALB, SCOL2_WFALB, NCONALB, PCONALB )       ! Output
+
+!  Get the weighting functions
+!    -- MS Mode only, do not require Direct-beam contributions.
+!         !@@ 2p1 New OBSGEOM     option 12/21/12
+!         !@@ 2p2 New 2S_LEVELOUT option 07/17/13
+
+!         !@@ 2p3. 11/5/13. Post-processing control
+
+          IF ( DO_POSTPROCESSING ) THEN
+            CALL TWOSTREAM_SURFACEWF &
+             ( MAXLAYERS, MAXBEAMS, MAX_USER_STREAMS, MAX_SURFACEWFS,              & ! Dimensions
+               DO_UPWELLING, DO_DNWELLING, DO_SOLAR_SOURCES, DO_USER_OBSGEOMS,     & ! inputs  !@@ 2p1
+               DO_2S_LEVELOUT, DO_BRDF_SURFACE, FOURIER, IBEAM, NLAYERS,           & ! inputs  !@@ 2p2
+               N_USER_STREAMS, N_SURFACE_WFS, ALBEDO, UBRDF_F, LS_UBRDF_F,         & ! inputs
+               SURFACE_FACTOR, FLUX_MULTIPLIER, STREAM_VALUE, IDOWNSURF,           & ! inputs
+               EIGENTRANS, T_DELT_USERM, XPOS, XNEG, NCONALB,                      & ! inputs
+               PCONALB, U_XPOS, U_XNEG, HMULT_1, HMULT_2,                          & ! inputs
+               SURFACEWF_F_UP,    SURFACEWF_F_DN,                                  & ! Output
+               SURFJACLEVEL_F_UP, SURFJACLEVEL_F_DN )                                ! Output   !@@ 2p2
+          ENDIF
+
+!  Flux output. New Subroutine, 11/5/13 Version 2.3
+
+          IF ( DO_INCLUDE_MVOUT ) THEN
+            CALL TWOSTREAM_FLUXES_SURFACEWF &
+            ( MAXBEAMS, MAXLAYERS, MAX_SURFACEWFS, MAXTHREADS,    & ! Dimensions
+              DO_UPWELLING, DO_DNWELLING, IBEAM, NLAYERS, THREAD, & ! Input flags/Control
+              N_SURFACE_WFS, PI4, STREAM_VALUE, FLUX_MULTIPLIER,  & ! Input Control
+              NCONALB, PCONALB, XPOS, XNEG, EIGENTRANS,           & ! Input 2-stream solution
+              SURFJACFLUXES_TOA, SURFJACFLUXES_BOA )                  ! Output
+          ENDIF
+
+        ENDIF
+
+!  Continuation point for next Beam solution
+
+ 4000   continue
+
+!  End loop over beam solutions
+
+      END DO
+
+!  ######
+!  finish
+!  ######
+
+      RETURN
+END SUBROUTINE TWOSTREAM_LPS_FOURIER_MASTER
+
+end module twostream_lps_master_m
+
