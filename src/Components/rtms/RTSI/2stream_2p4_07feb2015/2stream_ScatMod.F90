@@ -263,9 +263,9 @@
           D2S_SCALING,                                                    &
           self%Surface%Base%TSIO%THERMAL_BB_INPUT,                        &
           LAMBERTIAN_ALBEDO,                                              &
-          self%Surface%BRDF_F_0,                                          &
-          self%Surface%BRDF_F,                                            &
-          self%Surface%UBRDF_F,                                           &
+          self%Surface%Base%TSIO%BRDF_F_0,                                &
+          self%Surface%Base%TSIO%BRDF_F,                                  &
+          self%Surface%Base%TSIO%UBRDF_F,                                 &
           self%Surface%Base%TSIO%EMISSIVITY,                              &
           self%Surface%Base%TSIO%SURFBB,                                  &
           self%Surface%Base%TSIO%SLTERM_ISOTROPIC,                        &
