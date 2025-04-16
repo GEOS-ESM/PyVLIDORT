@@ -75,6 +75,17 @@ module 2STREAM_Mod
 
       REAL(kind=dp) :: EMISSIVITY
 
+!  BRDF Fourier components (NOT threaded)
+!  0 and 1 Fourier components of BRDF, following order (same all threads)
+!    incident solar directions,  reflected quadrature stream
+!    incident quadrature stream, reflected quadrature stream
+!    incident quadrature stream, reflected user streams
+
+      REAL(KIND=DP) :: BRDF_F_0 ( 0:1, MAXBEAMS )
+      REAL(KIND=DP) :: BRDF_F   ( 0:1 )
+      REAL(KIND=DP) :: UBRDF_F  ( 0:1, MAX_USER_ANGLES )
+
+
 !  Version 2p3. 1/23/14. Introduce SLEAVE stuff
 !    Do not require any first-order inputs (exact or Fourier)
 !    Isotropic Surface leaving term (if flag set)
@@ -198,6 +209,11 @@ module 2STREAM_Mod
       self%TSIO%THERMAL_BB_INPUT = 0.0d0
       self%TSIO%EMISSIVITY       = 0.0d0
       self%TSIO%SURFBB           = 0.0d0
+
+! Initialize BRDF inputs
+      self%TSIO%BRDF_F_0         = 0.0d0
+      self%TSIO%BRDF_F           = 0.0d0
+      self%TSIO%UBRDF_F          = 0.0d0
 
 ! Initialize SLEAVE inputs
       self%TSIO%SLTERM_ISOTROPIC = 0.0d0
