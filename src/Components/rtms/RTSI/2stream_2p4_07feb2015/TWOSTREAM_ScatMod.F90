@@ -9,9 +9,7 @@
 
       implicit NONE
 
-      PUBLIC
-
-      TWOSTREAM_Run
+      PUBLIC  TWOSTREAM_Run
 
       type TWOSTREAM_scat
 
@@ -37,6 +35,7 @@
          real*8     :: REFLECTANCE ! TOA reflectance
       end type TWOSTREAM_output
 
+      contains
 !.............................................................................
 
       subroutine TWOSTREAM_Run (self, output, rc)
@@ -115,7 +114,8 @@
       logical                                            :: DO_USER_OBSGEOMS       
       logical                                            :: DO_SURFACE_LEAVING     
       logical                                            :: DO_SL_ISOTROPIC        
-      logical                                            :: DO_PENTADIAG_INVERSE   
+      logical                                            :: DO_PENTADIAG_INVERSE  
+      logical                                            :: DO_BRDF_SURFACE 
 
 
       rc = 0
@@ -243,7 +243,7 @@
           self%Surface%Base%TSIO%BVPINDEX,                                &
           self%Surface%Base%TSIO%BVPSCALEFACTOR,                          &
           self%Surface%Base%TSIO%TAYLOR_ORDER,                            &
-          self%Surface%Base%TSIO%TAYLOR_SMALL,                            &
+          TAYLOR_SMALL,                                                   &
           NLAYERS, self%Surface%Base%TSIO%NTOTAL,                         &
           self%Surface%Base%TSIO%STREAM_VALUE,                            &
           self%Surface%Base%N_USER_OBSGEOMS,                              &
@@ -255,11 +255,11 @@
           self%Surface%Base%TSIO%FLUX_FACTOR,                             &
           self%Surface%Base%NBEAMS,                                       &
           BEAM_SZAS,                                                      &
-          self%Surface%Base%TSIO%EARTH_RADIUS                             &
+          self%Surface%Base%TSIO%EARTH_RADIUS,                            &
           HEIGHT_GRID,                                                    & 
           DELTAU_VERT_INPUT,                                              & 
           OMEGA_TOTAL_INPUT,                                              &
-          ASYMM_VERT_INPUT,                                               &
+          ASSYM_VERT_INPUT,                                               &
           D2S_SCALING,                                                    &
           self%Surface%Base%TSIO%THERMAL_BB_INPUT,                        &
           LAMBERTIAN_ALBEDO,                                              &
@@ -283,21 +283,21 @@
 
 !  Exception handling
 
-        IF ( STATUS_INPUTCHECK .eq. 1 ) THEN
+        IF ( self%Surface%Base%TSIO%STATUS_INPUTCHECK .eq. 1 ) THEN
           write(*,'(a,i4)')'INPUT Check failed from Baseline Run # ',T
-          write(*,*)' - Number of Messages = ', C_NMESSAGES
-          Do k = 1, C_NMESSAGES
-            write(*,'(A,I3,A,A)')' - Message # ',K,': ', TRIM(C_MESSAGES(K))
-            write(*,'(A,I3,A,A)')' - Action  # ',K,': ', TRIM(C_ACTIONS(K))
+          write(*,*)' - Number of Messages = ', self%Surface%Base%TSIO%C_NMESSAGES
+          Do k = 1, self%Surface%Base%TSIO%C_NMESSAGES
+            write(*,'(A,I3,A,A)')' - Message # ',K,': ', TRIM(self%Surface%Base%TSIO%C_MESSAGES(K))
+            write(*,'(A,I3,A,A)')' - Action  # ',K,': ', TRIM(self%Surface%Base%TSIO%C_ACTIONS(K))
           ENDDO
           stop'Test_2S_only program aborted'
         ENDIF
-        IF ( STATUS_EXECUTION .eq. 1 ) THEN
+        IF ( self%Surface%Base%TSIO%STATUS_EXECUTION .eq. 1 ) THEN
           write(*,'(a,i4)')'EXECUTION failed from Baseline Run # ',T
           write(*,*)' - Print 1 Message and 2 Traces'
-          write(*,'(A)') TRIM(E_MESSAGE)
-          write(*,'(A)') TRIM(E_TRACE_1)
-          write(*,'(A)') TRIM(E_TRACE_2)
+          write(*,'(A)') TRIM(self%Surface%Base%TSIO%E_MESSAGE)
+          write(*,'(A)') TRIM(self%Surface%Base%TSIO%E_TRACE_1)
+          write(*,'(A)') TRIM(self%Surface%Base%TSIO%E_TRACE_2)
           stop'Test_2S_only program aborted'
         ENDIF
 

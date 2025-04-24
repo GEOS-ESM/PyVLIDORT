@@ -1,4 +1,4 @@
-module 2STREAM_Mod
+module TWOSTREAM_Mod
 
       USE twostream_pars
 
@@ -131,6 +131,7 @@ module 2STREAM_Mod
         TYPE(TWOSTREAM_IO)      :: TSIO
       END TYPE TWOSTREAM
 
+      contains
 !.............................................................................
 
       subroutine TWOSTREAM_Init (self, km, rc)
@@ -193,7 +194,7 @@ module 2STREAM_Mod
 !  Atmosphere
       self%TSIO%EARTH_RADIUS = 6371.0d0         ! Earth radius (km)
       self%TSIO%NLAYERS      = km               ! Number of atmospheric layers
-      self%TSIO%NTOTAL       = 2 * NLAYERS
+      self%TSIO%NTOTAL       = 2 * km
 
 ! Flux factor
       self%TSIO%FLUX_FACTOR  = 1.00d0           ! Solar flux constant; =1 if no solar sources.
@@ -219,7 +220,9 @@ module 2STREAM_Mod
       self%TSIO%SLTERM_ISOTROPIC = 0.0d0
       self%TSIO%SLTERM_F_0       = 0.0d0
 
+
+      rc = 0
       end subroutine TWOSTREAM_Init
 
 
-      END MODULE twostream_init
+      END MODULE TWOSTREAM_Mod

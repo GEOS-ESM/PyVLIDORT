@@ -53,7 +53,7 @@ module TWOSTREAM_SurfaceMod
       USE twostream_brdf_supplement_m
 
       implicit NONE
-      type(LIDORT_Surface), intent(inout)   :: self
+      type(TWOSTREAM_Surface), intent(inout)   :: self
       real*8, intent(in)                    :: solar_zenith
       real*8, intent(in)                    :: sensor_zenith
       real*8, intent(in)                    :: relative_azimuth
@@ -97,13 +97,13 @@ module TWOSTREAM_SurfaceMod
       USER_OBSGEOMS = 0.0
       USER_OBSGEOMS(1,1) = solar_zenith
       USER_OBSGEOMS(1,2) = sensor_zenith
-      USER_OBSGEOMS(1,3) = relat_azimuth
+      USER_OBSGEOMS(1,3) = relative_azimuth
       BEAM_SZAS = 0.0
       BEAM_SZAS(1) = solar_zenith
       USER_ANGLES = 0.0
       USER_ANGLES(1) = sensor_zenith
       USER_RELAZMS = 0.0
-      USER_RELAZMS(1) = relat_azimuth
+      USER_RELAZMS(1) = relative_azimuth
 
 
 
@@ -153,7 +153,7 @@ module TWOSTREAM_SurfaceMod
               self%Base%TSIO%DO_USER_OBSGEOMS,              & ! Inputs !@@
               LAMBERTIAN_KERNEL_FLAG,                       & ! Inputs
               DO_SHADOW_EFFECT,                             & 
-              self%Base%VSIO%DO_SURFACE_EMISSION,           & ! Inputs
+              self%Base%TSIO%DO_SURFACE_EMISSION,           & ! Inputs
               self%Base%NBEAMS, self%Base%N_USER_ANGLES,    &
               self%Base%N_USER_OBSGEOMS,                    & ! Inputs !@@
               BEAM_SZAS, USER_ANGLES, USER_OBSGEOMS,        & ! Inputs !@@
