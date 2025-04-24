@@ -152,12 +152,12 @@ module TWOSTREAM_SurfaceMod
               self%Base%TSIO%DO_SOLAR_SOURCES,              &
               self%Base%TSIO%DO_USER_OBSGEOMS,              & ! Inputs !@@
               LAMBERTIAN_KERNEL_FLAG,                       & ! Inputs
-              DO_SHADOW_EFFECT, 
+              DO_SHADOW_EFFECT,                             & 
               self%Base%VSIO%DO_SURFACE_EMISSION,           & ! Inputs
               self%Base%NBEAMS, self%Base%N_USER_ANGLES,    &
               self%Base%N_USER_OBSGEOMS,                    & ! Inputs !@@
               BEAM_SZAS, USER_ANGLES, USER_OBSGEOMS,        & ! Inputs !@@
-              self%Base%TSIO%STREAM_VALUE, NSTREAMS_BRDF,                  & ! Inputs
+              self%Base%TSIO%STREAM_VALUE, NSTREAMS_BRDF,   & ! Inputs
               N_BRDF_KERNELS, WHICH_BRDF, BRDF_FACTORS,     & ! Inputs
               N_BRDF_PARAMETERS, BRDF_PARAMETERS,           & ! Inputs
               self%Base%TSIO%BRDF_F_0,                      & ! Outputs
