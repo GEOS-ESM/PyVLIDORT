@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
+- added VLIDORT source codes
+- added test script for running a small subset of an SBG granule
 ### Changed
 
 ### Fixed

@@ -1,0 +1,3 @@
+paths_yaml: sbg_files.yaml
+inst_yaml: sbg.yaml
+orbit_yaml: ssd650.yaml

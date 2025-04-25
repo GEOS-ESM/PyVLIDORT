@@ -1,0 +1,26 @@
+#!/usr/bin/sh
+#=======================================================================
+# name - setup_env
+# purpose -
+#   This script can be "sourced" from the bash shell to set environment
+#   variables and modules needed for building and running in the
+#   pyVLIDORT environment
+#
+
+# Add AeroApps to the path
+#----------------
+setenv AERODIR /discover/nobackup/pcastell/workspace/pyVLIDORT/pyVLIDORT
+set PATH = ${AERODIR}/install/bin/:$PATH
+
+# Set Python PATH
+#-----------------
+setenv PYTHONPATH ${AERODIR}/install/lib/Python
+
+# source AeroApps modules
+source ${AERODIR}/env@/g5_modules
+
+# Path for shared object libraries
+#------------------
+setenv LD_LIBRARY_PATH ${AERODIR}/install/lib:$LD_LIBRARY_PATH
+setenv LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:${BASEDIR}/`uname -s`/lib
+
