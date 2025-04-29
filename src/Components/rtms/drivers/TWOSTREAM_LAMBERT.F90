@@ -3,10 +3,10 @@
 !
 !.............................................................................
 
-subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, nMom, &
-                   nPol, tau, ssa, g, pmom, pe, he, te, albedo,            &
+subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, &
+                   ROT, depol_ratio, tau, ssa, g, pe, he, te, albedo,            &
                    solar_zenith, relat_azymuth, sensor_zenith, &
-                   MISSING,verbose,radiance_L,reflectance_L, ROT, rc)
+                   MISSING,verbose,radiance_L,reflectance_L, rc)
 !
 ! Uses 2STREAM to compute TOA radiance
 !
@@ -103,6 +103,8 @@ subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, nMom, &
            SCAT%tau => tau(:,i,j)
            SCAT%ssa => ssa(:,i,j)
            SCAT%g => g(:,i,j)
+           SCAT%rot => rot(:,j,i)
+           SCAT%depol_ratio => depol_ratio(i)
          
            call TWOSTREAM_Run (SCAT, output, ier)
 
@@ -126,5 +128,6 @@ subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, nMom, &
 
   end do ! Loop over obs
 
-end subroutine LIDORT_Scalar_Lambert
+end subroutine TWOSTREAM_Lambert
+
 !.............................................................................
