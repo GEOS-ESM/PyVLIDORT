@@ -284,7 +284,7 @@
 !  Exception handling
 
         IF ( self%Surface%Base%TSIO%STATUS_INPUTCHECK .eq. 1 ) THEN
-          write(*,'(a,i4)')'INPUT Check failed from Baseline Run # ',T
+          write(*,'(a)')'INPUT Check failed'
           write(*,*)' - Number of Messages = ', self%Surface%Base%TSIO%C_NMESSAGES
           Do k = 1, self%Surface%Base%TSIO%C_NMESSAGES
             write(*,'(A,I3,A,A)')' - Message # ',K,': ', TRIM(self%Surface%Base%TSIO%C_MESSAGES(K))
@@ -293,7 +293,7 @@
           stop'Test_2S_only program aborted'
         ENDIF
         IF ( self%Surface%Base%TSIO%STATUS_EXECUTION .eq. 1 ) THEN
-          write(*,'(a,i4)')'EXECUTION failed from Baseline Run # ',T
+          write(*,'(a)')'EXECUTION failed'
           write(*,*)' - Print 1 Message and 2 Traces'
           write(*,'(A)') TRIM(self%Surface%Base%TSIO%E_MESSAGE)
           write(*,'(A)') TRIM(self%Surface%Base%TSIO%E_TRACE_1)
