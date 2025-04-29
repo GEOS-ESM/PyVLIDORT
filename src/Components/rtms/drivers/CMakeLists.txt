@@ -1,7 +1,8 @@
 esma_add_subdirectories (solar_reference)
 esma_set_this ()
 
-set (srcs 
+set (srcs
+    TWOSTREAM_LAMBERT.F90 
     VLIDORT_LAMBERT.F90 
     VLIDORT_BRDF_MODIS.F90 
     VLIDORT_BRDF_MODIS_BPDF.F90
@@ -16,7 +17,7 @@ set (srcs
 
 esma_add_library (${this}
   SRCS ${srcs}
-  DEPENDENCIES ${VLIDORT_LIBRARY} LIDORT3p7  ${NETCDF_LIBRARIES} MPI::MPI_Fortran
+  DEPENDENCIES ${VLIDORT_LIBRARY} LIDORT3p7 TWOSTREAM2p4  ${NETCDF_LIBRARIES} MPI::MPI_Fortran
 
   )
 
