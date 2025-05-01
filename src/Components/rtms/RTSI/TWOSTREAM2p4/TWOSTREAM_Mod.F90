@@ -127,6 +127,7 @@ module TWOSTREAM_Mod
         integer     :: N_USER_RELAZMS = 1  ! Number of relative azimuth angles
         integer     :: N_USER_LEVELS  = 1  ! Number of user-defined vertical output levels
         integer     :: N_USER_OBSGEOMS = 1 ! Number of observation geometry triplets
+        logical     :: DO_PLANE_PARALLEL = .false.
 
         TYPE(TWOSTREAM_IO)      :: TSIO
       END TYPE TWOSTREAM
@@ -166,7 +167,7 @@ module TWOSTREAM_Mod
 !                            -------------
 
       self%TSIO%DO_SOLAR_SOURCES    = .true.     ! Include solar sources?
-      self%TSIO%DO_PLANE_PARALLEL   = .false.    ! Plane-parallel treatment of direct beam?
+      self%TSIO%DO_PLANE_PARALLEL   = self%DO_PLANE_PARALLEL    ! Plane-parallel treatment of direct beam?
 
 !                          Thermal controls
 !                          ----------------
