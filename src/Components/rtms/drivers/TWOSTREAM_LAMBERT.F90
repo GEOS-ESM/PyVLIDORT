@@ -4,8 +4,8 @@
 !.............................................................................
 
 subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
-                   ROT, depol_ratio, tau, ssa, g, pe, he, te, albedo,            &
-                   solar_zenith, relat_azymuth, sensor_zenith, &
+                   ROT, depol_ratio, alpha, tau, ssa, g, pe, he, te, albedo,            &
+                   solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                    MISSING,verbose,radiance_L,reflectance_L, rc)
 !
 ! Uses 2STREAM to compute TOA radiance
@@ -29,6 +29,7 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
   real*8, target,   intent(in)  :: ssa(km,nch,nobs) ! single scattering albedo
   real*8, target,   intent(in)  :: g(km,nch,nobs)   ! asymmetry factor
 
+  real*8, target,   intent(in) :: alpha(km,nobs,nch) ! trace gas absorption
   real*8, target,   intent(in) :: ROT(km,nobs,nch)  ! rayleigh optical thickness
   real*8, target,   intent(in) :: depol_ratio(nch)  ! depolariation ratio
 
@@ -40,6 +41,8 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
   real*8, target,   intent(in)  :: solar_zenith(nobs)  
   real*8, target,   intent(in)  :: relat_azymuth(nobs) 
   real*8, target,   intent(in)  :: sensor_zenith(nobs) 
+
+  real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
 
   real*8, target,   intent(in)  :: albedo(nobs,nch)       ! surface albedo
   
@@ -90,7 +93,9 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
       ! Loop over channels
       ! ------------------
       do i = 1, nch 
-       
+           ! set solar flux
+           SCAT%Surface%Base%TSIO%FLUX_FACTOR = flux_factor(i,j)       
+
            ! Mare sure albedo is defined
            ! ---------------------------
            if ( IS_MISSING(albedo(j,i)) ) then
@@ -106,6 +111,7 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
            SCAT%tau => tau(:,i,j)
            SCAT%ssa => ssa(:,i,j)
            SCAT%g => g(:,i,j)
+           SCAT%alpha => alpha(:,i,j)
            SCAT%rot => rot(:,j,i)
            SCAT%depol_ratio => depol_ratio(i)
          

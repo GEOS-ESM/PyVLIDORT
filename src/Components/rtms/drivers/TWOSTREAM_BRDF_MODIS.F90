@@ -18,8 +18,8 @@ module TWOSTREAM_BRDF_MODIS
   end function IS_MISSING
 
   subroutine TWOSTREAM_BRDF_LandMODIS (km, nch, nobs,channels, plane_parallel,       &
-                     ROT, depol_ratio, tau, ssa, g, pe, he, te, kernel_wt, param, &
-                     solar_zenith, relat_azymuth, sensor_zenith, &
+                     ROT, depol_ratio, alpha, tau, ssa, g, pe, he, te, kernel_wt, param, &
+                     solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose,radiance_L_SURF,reflectance_L_SURF, rc )
   !
   ! Uses TWOSTREAM to compute TOA radiances.
@@ -46,6 +46,7 @@ module TWOSTREAM_BRDF_MODIS
     real*8, target,   intent(in)  :: ssa(km,nch,nobs) ! single scattering albedo
     real*8, target,   intent(in)  :: g(km,nch,nobs)   ! asymmetry factor
 
+    real*8, target,   intent(in)  :: alpha(km,nch,nobs) ! trace gas absorption
     real*8, target,   intent(in)  :: ROT(km,nobs,nch) ! rayleigh optical thickness
     real*8, target,   intent(in)  :: depol_ratio(nch) ! depolarization ratio
 
@@ -62,6 +63,8 @@ module TWOSTREAM_BRDF_MODIS
     real*8, target,   intent(in)  :: solar_zenith(nobs)  
     real*8, target,   intent(in)  :: relat_azymuth(nobs) 
     real*8, target,   intent(in)  :: sensor_zenith(nobs) 
+
+    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
     
     integer,          intent(in)            :: verbose
 
@@ -103,7 +106,10 @@ module TWOSTREAM_BRDF_MODIS
    
       ! Loop over channels
       ! ------------------
-      do i = 1, nch 
+      do i = 1, nch
+        ! set solar flux
+        SCAT%Surface%Base%TSIO%FLUX_FACTOR = flux_factor(i,j)
+ 
         ! Make sure kernel weights and parameters are defined
         do n = 1, nkernel
           if (IS_MISSING(kernel_wt(n,i,j),MISSING)) then
@@ -134,6 +140,7 @@ module TWOSTREAM_BRDF_MODIS
         SCAT%tau => tau(:,i,j)
         SCAT%ssa => ssa(:,i,j)
         SCAT%g => g(:,i,j)
+        SCAT%alpha => alpha(:,i,j)
         SCAT%rot => ROT(:,j,i)
         SCAT%depol_ratio => depol_ratio(i)
          
