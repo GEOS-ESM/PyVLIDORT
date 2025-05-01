@@ -50,6 +50,16 @@ list (APPEND srcs
    ${VSLEAVE_PATH}/vsleave_sup_mod.f90
 )  
 
+set(VFZMAT_PATH vsup/vfzmat)
+list (APPEND srcs
+   ${VFZMAT_PATH}/vfzmat_Numerical.f90      
+   ${VFZMAT_PATH}/vfzmat_DevelopCoeffs.f90  
+   ${VFZMAT_PATH}/vfzmat_ExpandCoeffs.f90   
+   ${VFZMAT_PATH}/vfzmat_Rotation.f90       
+   ${VFZMAT_PATH}/vfzmat_PhasMat.f90        
+   ${VFZMAT_PATH}/vfzmat_Rayleigh.f90       
+   ${VFZMAT_PATH}/vfzmat_Master.f90
+)
 esma_add_library (${this}
   SRCS ${srcs}
   )
