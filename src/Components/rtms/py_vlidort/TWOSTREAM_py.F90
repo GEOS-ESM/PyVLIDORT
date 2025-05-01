@@ -8,7 +8,7 @@
 
 
 subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,nparam, &
-                     ROT, depol, tau, ssa, g, pe, he, te, kernel_wt, param, &
+                     ROT, depol, alpha, tau, ssa, g, pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
 
@@ -31,6 +31,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,
   !                                                   ! --- Rayleigh Parameters ---
     real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
     real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+    real*8,           intent(in)            :: alpha(km,nch,nobs) ! trace gas absorption
 
   !                                                   ! --- Aerosol Optical Properties ---
     real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
@@ -61,15 +62,15 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,
     integer,          intent(out)           :: rc                             ! return code
 
     call TWOSTREAM_BRDF_LandMODIS (km, nch, nobs, channels, plane_parallel, &
-                                   ROT, depol, tau, ssa, g, pe, he, te, &
+                                   ROT, depol, alpha, tau, ssa, g, pe, he, te, &
                                    kernel_wt, param, &
                                    solar_zenith, &
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
                                    MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
+                                   radiance_TS_SURF, &
+                                   reflectance_TS_SURF, &
                                    rc )  
 
 
@@ -91,10 +92,6 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, channels, plane_parallel, &
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
     real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
 
 !                                                   ! --- Rayleigh Parameters ---
@@ -105,7 +102,7 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, channels, plane_parallel, &
   !                                                   ! --- Aerosol Optical Properties ---
     real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
     real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+    real*8,           intent(in)            :: g(km,nch,nobs)   ! assymetry parameter
 
     real*8,           intent(in)            :: MISSING          ! MISSING VALUE
     real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
@@ -128,7 +125,7 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, channels, plane_parallel, &
     integer,          intent(out)           :: rc                             ! return code
 
     call TWOSTREAM_Lambert_Surface (km, nch, nobs, channels, plane_parallel, &
-                                   ROT, depol, alpha, tau, ssa, pmom, pe, he, te, &
+                                   ROT, depol, alpha, tau, ssa, g, pe, he, te, &
                                    albedo, &
                                    solar_zenith, &
                                    relat_azymuth, &
