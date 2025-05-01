@@ -3,7 +3,7 @@
 !
 !.............................................................................
 
-subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, &
+subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
                    ROT, depol_ratio, tau, ssa, g, pe, he, te, albedo,            &
                    solar_zenith, relat_azymuth, sensor_zenith, &
                    MISSING,verbose,radiance_L,reflectance_L, rc)
@@ -19,6 +19,8 @@ subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, &
   integer,          intent(in)  :: km    ! number of levels on file
   integer,          intent(in)  :: nch   ! number of channels
   integer,          intent(in)  :: nobs  ! number of observations
+
+  logical,          intent(in)  :: plane_parallel ! do plane parallel flag
 
   real*8, target,   intent(in)  :: channels(nch)    ! wavelengths [nm]
 
@@ -60,6 +62,7 @@ subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, &
   rc = 0
   ier = 0
 
+  SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
   call TWOSTREAM_Init( SCAT%Surface%Base, km, rc)
   if ( rc /= 0 ) then
     write(*,*) 'TWOSTREAM_Init returning with error'
@@ -128,6 +131,6 @@ subroutine TWOSTREAM_Lambert (km, nch, nobs,channels, &
 
   end do ! Loop over obs
 
-end subroutine TWOSTREAM_Lambert
+end subroutine TWOSTREAM_Lambert_Surface
 
 !.............................................................................

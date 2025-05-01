@@ -17,7 +17,7 @@ module TWOSTREAM_BRDF_MODIS
     return
   end function IS_MISSING
 
-  subroutine TWOSTREAM_BRDF_LandMODIS (km, nch, nobs,channels,       &
+  subroutine TWOSTREAM_BRDF_LandMODIS (km, nch, nobs,channels, plane_parallel,       &
                      ROT, depol_ratio, tau, ssa, g, pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, &
                      MISSING,verbose,radiance_L_SURF,reflectance_L_SURF, rc )
@@ -36,6 +36,8 @@ module TWOSTREAM_BRDF_MODIS
     integer,          intent(in)  :: km    ! number of vertical levels
     integer,          intent(in)  :: nch   ! number of channels
     integer,          intent(in)  :: nobs  ! number of observations
+
+    logical,          intent(in)  :: plane_parallel ! do plane parallel flag
                                         
     real*8, target,   intent(in)  :: channels(nch)    ! wavelengths [nm]
 
@@ -78,6 +80,7 @@ module TWOSTREAM_BRDF_MODIS
     rc = 0
     ier = 0
 
+    SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
     call TWOSTREAM_Init( SCAT%Surface%Base, km, rc)
     if ( rc /= 0 ) return
 
