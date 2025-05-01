@@ -64,6 +64,7 @@
       real*8                                             :: tau_l
       real*8                                             :: ssa_l
       real*8                                             :: g_l
+      real*8                                             :: alpha_l
       real*8                                             :: tau_ext
       real*8                                             :: tau_scat
       real*8                                             :: ssa_tot
@@ -189,13 +190,14 @@
 !     ---------------------
       do i = 1, NLAYERS
          ray_l = self%rot(i)         ! indice l for  each layer
+         alpha_l = self%alpha(i)
          tau_l = self%tau(i)
          ssa_l = self%ssa(i)
          g_l   = self%g(i)
 
 !        total optical depths for extinction and scattering
 !        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         tau_ext = ray_l + tau_l
+         tau_ext = alpha_l + ray_l + tau_l
          tau_scat = ray_l +  ssa_l * tau_l
 
 !        single scattering albedo total
