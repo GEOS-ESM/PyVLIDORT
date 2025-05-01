@@ -1,8 +1,13 @@
+module TWOSTREAM_LAMBERT
 !
 !  Simple f77 wrapper for the Python interface to 2STREAM
 !
 !.............................................................................
+    implicit NONE
 
+    PUBLIC TWOSTREAM_Lambert_Surface
+
+    contains
 subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
                    ROT, depol_ratio, alpha, tau, ssa, g, pe, he, te, albedo,            &
                    solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -140,3 +145,4 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs,channels, plane_parallel, &
 end subroutine TWOSTREAM_Lambert_Surface
 
 !.............................................................................
+end module TWOSTREAM_LAMBERT
