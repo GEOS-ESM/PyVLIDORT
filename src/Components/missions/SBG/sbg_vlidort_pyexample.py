@@ -23,6 +23,7 @@ from inputs_vlidort import INPUTS_VLIDORT
 
 
 from py_vlidort.vlidort import MODIS_BRDF_run
+from py_vlidort.twostream import MODIS_BRDF_run as ts_MODIS_BRDF_run
 from multiprocessing import Pool
 
 # Generic Lists of Varnames and Units
@@ -319,11 +320,119 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.surf_reflectance = np.ones([nobs,nch])*MISSING
         self.BR_Q = np.ones([nobs,nch])*MISSING
         self.BR_U = np.ones([nobs,nch])*MISSING
-        self.SSA  = np.ones([nlev,nobs,nch])*MISSING
         self.TAU  = np.ones([nlev,nobs,nch])*MISSING
-        self.G    = np.ones([nlev,nobs,nch])*MISSING
+        self.SSA  = np.ones([nlev,nobs,nch])*MISSING
         self.DEPOL = np.ones([nch])*MISSING
         self.ROT_   = np.ones([nlev,nobs,nch])*MISSING
+
+        self.ts_I = np.ones([nobs,nch])*MISSING
+        self.ts_reflectance = np.ones([nobs,nch])*MISSING
+        self.ts_SSA  = np.ones([nlev,nobs,nch])*MISSING
+        self.ts_SSA  = np.ones([nlev,nobs,nch])*MISSING
+        self.ts_DEPOL = np.ones([nch])*MISSING
+        self.ts_ROT_   = np.ones([nlev,nobs,nch])*MISSING
+
+    #---
+    def getargs(self,ich,sob,eob,iobs,npts):
+        """
+        Generic call to subset args
+        """
+        # Subset ROT for good obs only. dims are [nlev,nobs]
+        rot  = self.ROT[:,sob:eob,:]
+        depol_ratio = self.depol_ratio
+
+        # Subset aerosol fields for good obs only.
+        # calculate AOPs dims are [nlev,nch,nobs]
+        self.aer = self.AER.isel(nobs=slice(sob,eob))
+        self.getpyobsAOP(self.channels[ich])
+        tau  = self.tau
+        ssa  = self.ssa
+        pmom = self.pmom
+        g    = self.g
+
+        # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
+        pe   = self.pe[:,sob:eob].astype('float64')
+        ze   = self.ze[:,sob:eob].astype('float64')
+        te   = self.te[:,sob:eob].astype('float64')
+
+
+        # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
+        param     = self.RTLSparam[:,:,0:npts].astype('float64')
+        kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64')
+
+        # subset angles for good obs only. dims are [nobs]
+        vza = self.VZA[iobs].astype('float64')
+        sza = self.SZA[iobs].astype('float64')
+        raa = self.RAA[iobs].astype('float64')
+
+        return rot,depol_ratio,tau,ssa,g,pmom,pe,te,ze,param,kernel_wt,vza,sza,raa
+
+    #---
+    def runTWOSTREAM(self,p,ich):
+        """
+        Calls TWOSTREAM
+        """
+
+        # Get the index of good obs
+        iGood  = np.arange(len(self.iGood))[self.iGood]
+        nobs   = self.nobs
+
+        # get wavlength
+        channel = [self.channels[ich]]
+
+        # loop through nobs in batches
+        for sob in range(0,self.nobs,self.nbatch):
+            print('sob, nobs',sob, self.nobs)
+            eob = min([self.nobs,sob + self.nbatch])
+            iobs = iGood[sob:eob]
+            npts = eob - sob
+
+            # Subset inputs for batch
+            rot,depol_ratio,tau,ssa,g,pmom,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
+
+            # trace gas absorption
+            # empty for now
+            alpha = np.zeros([self.nlev,npts,1]).astype('float64')
+
+            # solar flux
+            # ones for now
+            flux_factor = np.ones([1,npts])
+
+            # create list of input arguments
+            args = [(channel, self.plane_parallel, rot[:,i:i+1,:], depol_ratio,
+                    alpha[:,i:1+1,:],
+                    tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1,:,:],
+                    pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
+                    kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                    sza[i:i+1], raa[i:i+1], vza[i:i+1],
+                    flux_factor[:,i:i+1],
+                    MISSING,
+                    self.verbose) for i in range(npts)]
+
+            # run vlidort distributed across processors
+            result = p.map(ts_MODIS_BRDF_run,args)
+
+            # initialize temporary outputs
+            I = []
+            reflectance = []
+
+            # reshape outputs
+            for r in result:
+                I_r,reflectance_r = r
+                I.append(I_r)
+                reflectance.append(reflectance_r)
+            I = np.concatenate(I)
+            reflectance = np.concatenate(reflectance)
+
+            # store outputs
+            self.ts_I[sob:eob,ich] = np.squeeze(I)
+            self.ts_reflectance[sob:eob,ich] = np.squeeze(reflectance)
+            self.ts_TAU[:,sob:eob,ich] = np.transpose(tau,[0,2,1]).squeeze()
+            self.ts_SSA[:,sob:eob,ich] = np.transpose(ssa,[0,2,1]).squeeze()
+            self.ts_G[:,sob:eob,ich] = np.transpose(g,[0,2,1]).squeeze()
+            self.ts_DEPOL[ich] = self.depol_ratio
+            self.ts_ROT_[:,sob:eob,ich] = rot.squeeze()
+
     #---
     def runVLIDORT(self,p,ich):
         """
@@ -344,42 +453,9 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             iobs = iGood[sob:eob]
             npts = eob - sob
 
-            # Subset ROT for good obs only. dims are [nlev,nobs]
-            rot  = self.ROT[:,sob:eob,:]
-            depol_ratio = self.depol_ratio
-
-            # Subset aerosol fields for good obs only.
-            # calculate AOPs dims are [nlev,nch,nobs]
-            self.aer = self.AER.isel(nobs=slice(sob,eob))    
-            self.getpyobsAOP(self.channels[ich])
-            tau = self.tau
-            ssa = self.ssa
-            pmom = self.pmom
-
-            # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
-            pe   = self.pe[:,sob:eob].astype('float64')
-            ze   = self.ze[:,sob:eob].astype('float64')
-            te   = self.te[:,sob:eob].astype('float64')
-
-
-            # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
-            param     = self.RTLSparam[:,:,0:npts].astype('float64')
-            kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64')
-
-            # subset angles for good obs only. dims are [nobs]
-            vza = self.VZA[iobs].astype('float64')
-            sza = self.SZA[iobs].astype('float64')
-            raa = self.RAA[iobs].astype('float64')
+            # Subset inputs for batch
+            rot,depol_ratio,tau,ssa,g,pmom,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
            
-            # initialize temporary outputs 
-            I = []
-            Q = []
-            U = []
-            reflectance = []
-            surf_reflectance = []
-            BR_Q = []
-            BR_U = []
-
             # create list of input arguments
             args = [(channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
                     tau[:,:,i:i+1], ssa[:,:,i:i+1], pmom[:,:,i:i+1,:,:],
@@ -391,6 +467,15 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
             # run vlidort distributed across processors
             result = p.map(MODIS_BRDF_run,args)
+
+            # initialize temporary outputs
+            I = []
+            Q = []
+            U = []
+            reflectance = []
+            surf_reflectance = []
+            BR_Q = []
+            BR_U = []
            
             # reshape outputs  
             for r in result:
@@ -420,7 +505,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             self.BR_U[sob:eob,ich] = np.squeeze(BR_U)
             self.TAU[:,sob:eob,ich] = np.transpose(tau,[0,2,1]).squeeze()
             self.SSA[:,sob:eob,ich] = np.transpose(ssa,[0,2,1]).squeeze()
-            self.G[:,sob:eob,ich] = np.transpose(self.g,[0,2,1]).squeeze()
+            self.G[:,sob:eob,ich] = np.transpose(g,[0,2,1]).squeeze()
             self.DEPOL[ich] = self.depol_ratio
             self.ROT_[:,sob:eob,ich] = rot.squeeze()
 
@@ -529,6 +614,21 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                     missing_value=MISSING,
                     )
 
+        ts_toa_att = dict(
+                    standard_name="TWOSTREAM TOA Reflectance",
+                    long_name="reflectance at the top of the atmosphere from TWOSTREAM",
+                    units="None",
+                    missing_value=MISSING,
+                    )
+
+        ts_I_att = dict(
+                    standard_name="TWOSTREAM TOA I",
+                    long_name="intensity at the top of the atmosphere from TWOSTREAM",
+                    units="W m-2 sr-1 nm-1",
+                    missing_value=MISSING,
+                    )
+
+
         # Create dataset
         ds = xr.Dataset(
             data_vars=dict(
@@ -589,6 +689,13 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         da = xr.DataArray(self.BR_U,dims=dims,coords=coords,attrs=srefu_att)
         ds['surf_reflectance_U'] = da
 
+        da = xr.DataArray(self.ts_reflectance,dims=dims,coords=coords,attrs=ts_toa_att)
+        ds['ts_toa_reflectance'] = da
+
+        da = xr.DataArray(self.ts_I,dims=dims,coords=coords,attrs=ts_I_att)
+        ds['ts_I'] = da
+
+
 
         # Add 3-D varaibles
         dims = ["lev","nobs", "ch"]
@@ -624,6 +731,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             TAU={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             SSA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             G={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            ts_toa_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+            ts_I={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             )
 
         ds.to_netcdf(path=self.outFile,format='NETCDF4',engine='netcdf4',encoding=encoding,unlimited_dims=['ch'])
