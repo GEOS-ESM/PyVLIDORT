@@ -22,5 +22,6 @@ ecbuild:
 GMAOpyobs:
   local: ./src/Shared/GMAO_Shared/GMAO_pyobs@
   remote: ../GMAOpyobs.git
-  tag: v1.2.3
+  branch: feature/pcastell/aoprt_fmatrix
+#  tag: v1.2.3
   develop: develop
