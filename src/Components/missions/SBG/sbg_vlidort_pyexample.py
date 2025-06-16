@@ -149,6 +149,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                         # Initiate Output Arrays
                         self.initOutputs()
                         if do_vlidort:
+                            # Run TWOSTREAM
+                            self.runTWOSTREAM(p,ich)
                             # Run VLIDORT using multiprocessing
                             self.runVLIDORT(p,ich)
 
@@ -403,7 +405,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             # create list of input arguments
             args = [(channel, self.plane_parallel, rot[:,i:i+1,:], depol_ratio,
                     alpha[:,i:1+1,:],
-                    tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1,:,:],
+                    tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1],
                     pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
                     kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
                     sza[i:i+1], raa[i:i+1], vza[i:i+1],
