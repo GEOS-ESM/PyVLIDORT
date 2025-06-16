@@ -322,13 +322,15 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.BR_U = np.ones([nobs,nch])*MISSING
         self.TAU  = np.ones([nlev,nobs,nch])*MISSING
         self.SSA  = np.ones([nlev,nobs,nch])*MISSING
+        self.G  = np.ones([nlev,nobs,nch])*MISSING
         self.DEPOL = np.ones([nch])*MISSING
         self.ROT_   = np.ones([nlev,nobs,nch])*MISSING
 
         self.ts_I = np.ones([nobs,nch])*MISSING
         self.ts_reflectance = np.ones([nobs,nch])*MISSING
+        self.ts_TAU  = np.ones([nlev,nobs,nch])*MISSING
         self.ts_SSA  = np.ones([nlev,nobs,nch])*MISSING
-        self.ts_SSA  = np.ones([nlev,nobs,nch])*MISSING
+        self.ts_G  = np.ones([nlev,nobs,nch])*MISSING
         self.ts_DEPOL = np.ones([nch])*MISSING
         self.ts_ROT_   = np.ones([nlev,nobs,nch])*MISSING
 
