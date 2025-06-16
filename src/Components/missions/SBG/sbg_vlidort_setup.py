@@ -81,7 +81,7 @@ def create_experiment_directory():
 
     # Determine the source code main directory
     # Will be FULL_PATH/AeroApps
-    source_directory = current_directory.parent.parent.parent.parent.parent 
+    source_directory = current_directory.parent.parent.parent.parent 
 
     reference_directory = source_directory.parent
 
@@ -149,7 +149,7 @@ def create_experiment_directory():
         print(f"You can change the group id in the SLURM script available in the experiment directory")
         print()
 
-    loc_filename = "sampler_run.j"
+    loc_filename = "sbg_vlidort_run.j"
     target_dir = experiment_directory
     dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
     search_reaplace_in_file(loc_filename, target_dir, dict_words)
