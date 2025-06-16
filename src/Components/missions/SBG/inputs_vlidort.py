@@ -124,7 +124,7 @@ class INPUTS_VLIDORT(G2GAOP):
 
         # load mietables
         # ---------------------------
-        self.p, self.m = 0,0
+        self.p, self.m, self.ang = 0,0,0
         for s in self.mieTable:
             m = self.mieTable[s]
             m['mie'] = mt.MIETABLE(m['monoFile'])
@@ -133,6 +133,7 @@ class INPUTS_VLIDORT(G2GAOP):
             dims = dict(self.mieTable[s]['mie'].ds.sizes)
             self.p = max(self.p,dims['p'])
             self.m = max(self.m,dims['m'])
+            self.ang = max(self.ang,dims['ang'])
 
 
 #------------------------------------ M A I N ------------------------------------
