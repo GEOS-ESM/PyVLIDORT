@@ -45,7 +45,7 @@
          real*8, pointer ::   gL(:)             ! liquid cloud asymmetry factor
          real*8, pointer :: pmomL(:,:,:)        ! liquid cloud components of the scattering phase matrix
 
-         type(VLIDORT_Surface) :: Surface
+         type(VLIDORT_Surface)           :: Surface
          type(VLIDORT_AOP)               :: AOP
 
       end type VLIDORT_scat
@@ -87,7 +87,9 @@
       USE VLIDORT_INPUTS_m
       USE VLIDORT_MASTERS_m
 
-      type(VLIDORT_scat),    intent(inout)  :: self        ! Contains most input
+      USE VLIDORT_AOPMod
+
+      type(VLIDORT_scat),    intent(inout)        :: self        ! Contains most input
       type(VLIDORT_output_vector), intent(out)    :: output      ! contains output
       integer,                     intent(out)    :: rc
 
@@ -102,45 +104,15 @@
       integer                                            :: i, j, k, l, m, n
       integer                                            :: IDR, ierror
       integer                                            :: NLAYERS
-      real*8                                             :: ray_l     
-      real*8                                             :: alpha_l 
-      real*8                                             :: tau_l 
-      real*8                                             :: ssa_l       
-      real*8                                             :: ssaL_l 
-      real*8                                             :: tauL_l 
-      real*8                                             :: ssaI_l 
-      real*8                                             :: tauI_l    
-      real*8                                             :: tau_ext
-      real*8                                             :: tau_scat
-      real*8                                             :: ssa_tot
-      real*8                                             :: raysmom2
-      real*8                                             :: gammamom2
-      real*8                                             :: alphamom2 
-      real*8                                             :: deltamom1 
-      real*8                                             :: aerswt 
-      real*8                                             :: rayswt
-      real*8                                             :: clIswt
-      real*8                                             :: clLswt
  
-      real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: aervmoms
-      real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: clLvmoms 
-      real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: clIvmoms  
-      real*8, dimension(0:2, 16)                         :: rayvmoms
-      real*8                                             :: difz
-
       logical                                            :: DO_LAMBERTIAN_SURFACE
       real*8                                             :: LAMBERTIAN_ALBEDO
-
-      real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: greekmat_total_input                     
-      real*8, dimension(MAXLAYERS)                       :: deltau_vert_input
-      real*8, dimension(MAXLAYERS)                       :: omega_total_input
 
       real*8, dimension(MAX_USER_LEVELS, MAX_GEOMETRIES, &
               MAXSTOKES, MAX_DIRECTIONS)                 :: STOKES
       real*8                                             :: FLUX_FACTOR
 
       real*8, parameter                                  :: pi = 4.*atan(1.0)
-      real*8                                             :: DEPOL_RATIO
        
       
       rc = 0
@@ -237,135 +209,20 @@
       self%Surface%Base%VIO%VLIDORT_FixIn%Chapman%TS_temperature_grid(0:NLAYERS) = self%te
 
 
-! DEPOL_RATIO is a function of wavelength in microns
-      DEPOL_RATIO = coef_depol(self%wavelength * 1.E-3)
-!                Populate Scattering Phase Matrix
-!                ---------------------------------
-! First initialize to zero to be safe
-      rayvmoms = 0.0
-      aervmoms = 0.0 
-      clLvmoms = 0.0
-      clIvmoms = 0.0     
+!                         Get total atmosphere optical inputs
+!                        -----------------------------------------------
+      call VLIDORT_CombineAOP(self,rc)
+      if ( rc /= 0 ) return
 
-!                Greek moments for Rayleigh Scattering 
-!                The same for all layers because DEPOL_RATIO is
-!                taken as constant right now. 
-!                ----------------------------------------------
-      gammamom2 = -SQRT(6.) * (1 - DEPOL_RATIO) / (2 + DEPOL_RATIO)
-      alphamom2 = 6 * (1 - DEPOL_RATIO) / (2 + DEPOL_RATIO)
-      deltamom1 = 3 * (1 - 2 * DEPOL_RATIO) / (2 + DEPOL_RATIO)
-      raysmom2 = (1.0 - DEPOL_RATIO)/(2.0 + DEPOL_RATIO) 
-   
-      rayvmoms(0,1) = 1.0
-      rayvmoms(1,1) = 0.0
-      rayvmoms(2,1) = raysmom2
-      rayvmoms(0,2) = 0.0
-      rayvmoms(1,2) = 0.0
-      rayvmoms(2,2) = gammamom2
-      do k = 3, 4
-         do l = 0, 2
-            rayvmoms(l,k) = 0.0
-         end do
-      end do
-      rayvmoms(0,5) = 0.0
-      rayvmoms(1,5) = 0.0
-      rayvmoms(2,5) = gammamom2 
-      rayvmoms(0,6) = 0.0
-      rayvmoms(1,6) = 0.0
-      rayvmoms(2,6) = alphamom2 
-      do k = 7, 15
-         do l = 0, 2
-            rayvmoms(l,k) = 0.0
-         end do
-      end do
-      rayvmoms(0,16) = 0.0
-      rayvmoms(1,16) = deltamom1
-      rayvmoms(2,16) = 0.0 
+      self%Surface%Base%VIO%VLIDORT_FixIn%Optical%TS_DELTAU_VERT_INPUT = self%AOP%deltau_vert_input
+      self%Surface%Base%VIO%VLIDORT_ModIn%MOptical%TS_OMEGA_TOTAL_INPUT = self%AOP%omega_total_input
+      self%Surface%Base%VIO%VLIDORT_FixIn%Optical%TS_GREEKMAT_TOTAL_INPUT = self%AOP%greekmat_total_input
 
-!     Loop over the layers:
-!     ---------------------
-      do i = 1, NLAYERS  
-         ray_l = self%rot(i)         ! indice l for  each layer 
-         ! check to see if alpha is initialized - alpha isn't
-         ! implemented everywhere yet
-         if (associated(self%alpha)) then
-             alpha_l = self%alpha(i)
-         else
-             alpha_l = 0.0
-         end if 
-         tau_l = self%tau(i)
-         ssa_l = self%ssa(i) 
-         tauI_l = self%tauI(i)
-         tauL_l = self%tauL(i)
-         ssaI_l = self%ssaI(i)
-         ssaL_l = self%ssaL(i)         
-        
-!        total optical depths for extinction and scattering 
-!        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         tau_ext = alpha_l + ray_l + tau_l + tauL_l + tauI_l
-         tau_scat = ray_l +  ssa_l * tau_l + tauL_l*ssaL_l + tauI_l*ssaI_l
+      if ( self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_SSCORR_USEFMAT ) then  ! provide the fmatrices
+            self%Surface%Base%VIO%VLIDORT_FixIn%Optical%TS_FMATRIX_UP = self%AOP%fmatrix_up 
+            self%Surface%Base%VIO%VLIDORT_FixIn%Optical%TS_FMATRIX_DN = self%AOP%fmatrix_dn
+      end if
 
-!        single scattering albedo total
-!        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         ssa_tot = tau_scat / tau_ext
-         if ( ssa_tot > 0.99999 ) then
-            ssa_tot = 0.99999
-         end if
-     
-         deltau_vert_input(i) = tau_ext
-         omega_total_input(i) = ssa_tot 
-
-!        VECTOR phase function moments 
-!        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~      
-      
-!        Phase function moments - Aerosol Part
-!        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         do l= 0, self%nmom-1               
-            aervmoms(l,i,1)  = self%pmom(i,l+1,1) ! P11 
-            aervmoms(l,i,2)  = self%pmom(i,l+1,2) ! P12                
-            aervmoms(l,i,5)  = self%pmom(i,l+1,2) ! P12 = P21                            
-            aervmoms(l,i,11) = self%pmom(i,l+1,3) ! P33 
-            aervmoms(l,i,12) = self%pmom(i,l+1,4) ! P34            
-            aervmoms(l,i,15) = -self%pmom(i,l+1,4) ! - P34
-            aervmoms(l,i,6)  = self%pmom(i,l+1,5) ! P22     
-            aervmoms(l,i,16) = self%pmom(i,l+1,6) ! P44  
-         end do
-
-!        Phase function moments - Cloud Part
-!        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         do l= 0, self%nmom-1               
-            clLvmoms(l,i,1)  = self%pmomL(i,l+1,1) ! P11 
-            clIvmoms(l,i,1)  = self%pmomI(i,l+1,1) ! P11 
-         end do
-         
-!        Add together Aerosol, Cloud, and Rayleigh Parts weighting by scattering optical depth
-!        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         aerswt = ssa_l * tau_l / tau_scat  
-         rayswt = ray_l / tau_scat 
-         clLswt = ssaL_l * tauL_l/ tau_scat
-         clIswt = ssaI_l * tauI_l/ tau_scat
-         do k = 1, 16
-            do l = 0,2
-               greekmat_total_input(l,i,k) = rayvmoms(l,k) * rayswt + aervmoms(l,i,k) * aerswt + &
-                                             clLvmoms(l,i,k) * clLswt + clIvmoms(l,i,k) * clIswt
-            end do
-        
-            do l = 3, self%nmom
-               greekmat_total_input(l,i,k) = aervmoms(l,i,k) * aerswt + clLvmoms(l,i,k) * clLswt + clIvmoms(l,i,k) * clIswt
-            end do
-               
-         end do
-         greekmat_total_input(0,i,1) = 1.0
-      
-           
-!     end layer loop
-!     ---------------
-      end do
-  
-      self%Surface%Base%VIO%VLIDORT_FixIn%Optical%TS_DELTAU_VERT_INPUT = deltau_vert_input
-      self%Surface%Base%VIO%VLIDORT_ModIn%MOptical%TS_OMEGA_TOTAL_INPUT = omega_total_input
-      self%Surface%Base%VIO%VLIDORT_FixIn%Optical%TS_GREEKMAT_TOTAL_INPUT = greekmat_total_input
-       
 !     Call the MASTER driver for doing the actual calculation
 !     -----------------------------------------------------------
      call VLIDORT_MASTER (self%Surface%Base%DO_DEBUG_INPUT, &
