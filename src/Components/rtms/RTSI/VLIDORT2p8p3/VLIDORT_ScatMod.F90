@@ -301,4 +301,4 @@
 
 !.............................................................................
 
-      end module VLIDORT_v_ScatMod
+      end module VLIDORT_ScatMod
