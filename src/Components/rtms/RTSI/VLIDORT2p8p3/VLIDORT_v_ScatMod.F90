@@ -14,11 +14,8 @@
 
       implicit NONE
 
-      PUBLIC  VLIDORT_Run             ! Run for each profile (pixel) - old code
       PUBLIC  VLIDORT_Run_Vector      ! Run for each profile (pixel) 
       PUBLIC  VLIDORT_Rayleigh        ! Calculated layer rayleigh optical thickness
-      PUBLIC  VLIDORT_LER             ! Lambertian Equivalent Reflectivity
-      PUBLIC  VLIDORT_AI              ! Aerosol Index
           
       interface VLIDORT_Run_Vector
          module procedure VLIDORT_Run_Vector_SingleGeom
@@ -271,116 +268,6 @@
          F_air= (78.084*depol1 + 20.946*depol2 + 0.934*depol3 +  C*100.0*depol4) / (78.084 + 20.946 + 0.934 + C*100.0)
 
       end function F_air       
-
-!..............................................................................
-
-      subroutine VLIDORT_LER (self, rad, refl, rc, icalc, transmissivity, sphericalalbedo)
- 
-      ! First compute the spherical albedo and the transmission of the 
-      ! atmosphere purely rayleigh and
-      ! the Lambertian Equivalent Reflectivity R*
-      !-------------------------------------------------------------------------------------
-
-       type(VLIDORT_scat), intent(inout)           :: self 
-       real*8,  intent(in)               :: rad       !Radiance mesure (atm Ray + aer)
-       real*8,  intent(out)              :: refl      !surface reflectivity R*           
-       integer, intent(out)              :: rc
-       real*8                            :: spher_alb !spherical albedo
-       real*8                            :: trans     !transmission
-       real*8                            :: reflectance 
-       real*8                            :: beta
-       real*8                            :: rad0      !Ray atmo and no surface reflection
-       real*8                            :: rad1      !Ray atmo and surface albedo = 0.1
-       real*8                            :: rad2      !Ray atmo and surface albedo = 0.2
-       real*8                            :: rad_aer
-       real*8                            :: rad_ray
-       real*8                            :: delta_rad
-       real*8                            :: AOT
-       real*8                            :: SSA
-       real*8                            :: U, Q
-       real*8, optional, intent(out)     :: icalc, transmissivity, sphericalalbedo
-       
-      
-       ! atmosphere Rayleigh and surface albedo = 0.0
-       ! --------------------------------------------
-       self%Surface%sfc_type = 1 !Lambertian
-       self%Surface%albedo = 0.0
-       call VLIDORT_Run (self, rad0, reflectance, AOT, SSA, rc,Q,U, .false., .false.)
-
-       ! atmosphere Rayleigh and surface albedo = 0.1
-       ! --------------------------------------------
-       self%Surface%sfc_type =1
-       self%Surface%albedo = 0.1
-       call VLIDORT_Run (self, rad1, reflectance, AOT,SSA, rc, Q,U,.false., .false.)
-
-       ! atmosphere Rayleigh and surface albedo = 0.2
-       ! --------------------------------------------
-       self%Surface%sfc_type = 1
-       self%Surface%albedo = 0.2
-       call VLIDORT_Run (self, rad2, reflectance, AOT,SSA, rc,Q,U, .false., .false.)
-
-       beta =  ( rad1 - rad0 ) / ( rad2 - rad0 )
-       spher_alb = (( beta * 0.2 ) - 0.1 ) / ( 0.1 * 0.2 * ( beta - 1 )) ! Spherical albedo
-       trans = ( 1 - ( spher_alb * 0.1 )) * ( rad1 - rad0 ) / 0.1        ! transmission
-       
-!       print*, 'spher_alb', spher_alb, trans
- 
-       ! Compute the Reflectivity R*
-       ! --------------------------
-       ! Compute the radiance for an atmosphere purely Ray and surface albedo = 0.0
-       !----------------------------------------------------------------------------
-       self%Surface%sfc_type = 1 
-       self%Surface%albedo = 0.0
-       call VLIDORT_Run (self, rad_ray, reflectance, AOT, SSA,rc, Q,U,.false., .false.)
-        
-
-       delta_rad =  rad - rad_ray    
-        
-       refl = delta_rad / ( trans + ( spher_alb * delta_rad )) ! Reflectivity R*
-
-       if(present(icalc))         icalc = rad_ray
-       if(present(transmissivity))   transmissivity = trans
-       if(present(sphericalalbedo))  sphericalalbedo = spher_alb
-      
-
-       end subroutine VLIDORT_LER
-       
-!.........................................................................
-
-      subroutine VLIDORT_AI (self,rad, refl, AI, rc)   
-
-      ! Compute the Aerosol Index from the reflectivity calculate 
-      ! from the preVOus subroutine
-      ! ---------------------------------------------------------
-       type(VLIDORT_scat),         intent(inout)   :: self
-       real*8,             intent(in)     :: rad
-       real*8,             intent(in)     :: refl      !reflectivity R*
-       integer,            intent(out)    :: rc
-       real*8,             intent(out)    :: AI        !Aerosol Index
-       real*8                             :: rad_nouv  !calcul with R* as the surface albedo param
-       real*8                             :: reflectance 
-       real*8                             :: alpha  
-       real*8                             :: SSA
-       real*8                             :: AOT 
-       real*8                             :: g_tot
-       real*8                             :: Q, U
-      ! Compute the radiance for an atmosphere Ray with the R* as the surface alb parameter
-      !-----------------------------------------------------------------------------------
-      self%Surface%sfc_type = 1 !Lambertian
-      self%Surface%albedo = refl  
-      
-      call VLIDORT_Run (self, rad_nouv, reflectance, AOT, SSA, rc,Q,U, .false., .false.)
-      
-      if (rad > 0.0) then
-      alpha = rad / rad_nouv
-      AI = -100 * log10(alpha) ! Calcul of the Aerosol Index
-      else
-      AI = self%MISSING
-      end if
-     
-      
-      end subroutine VLIDORT_AI
-!.........................................................................
 
 !.............................................................................
       subroutine VLIDORT_Run_Vector_SingleGeom (self, output, rc)
