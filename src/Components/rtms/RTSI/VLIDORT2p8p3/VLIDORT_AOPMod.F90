@@ -327,7 +327,7 @@
              OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS, DEPOL_RATIO,      & ! Input  Geometries + Depol
              RayFmatrices_up, RayFmatrices_dn, RayZmatrices_up, RayZmatrices_dn, rayCoeffs )
 
-        if any(self%tau > 0.0) then
+        if (any(self%tau > 0.0)) then
         !  Call to the supplement master for aerosols
           Call vfzmat_Master &
            ( MAXMOMENTS_INPUT, MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES,        & ! Input  Dimensions (VLIDORT)
@@ -339,7 +339,7 @@
              AerFmatrices_up, AerFmatrices_dn, AerZmatrices_up, AerZmatrices_dn, aerCoeffs )
         end if
 
-        if any(self%tauL > 0.0) then
+        if (any(self%tauL > 0.0)) then
         !  Call to the supplement master for liquid clouds
           Call vfzmat_Master &
            ( MAXMOMENTS_INPUT, MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES,        & ! Input  Dimensions (VLIDORT)
@@ -351,7 +351,7 @@
              clLFmatrices_up, clLFmatrices_dn, clLZmatrices_up, clLZmatrices_dn, clLCoeffs )
         end if
 
-        if any(self%tauI > 0.0) then
+        if (any(self%tauI > 0.0)) then
         !  Call to the supplement master for ice clouds
           Call vfzmat_Master &
            ( MAXMOMENTS_INPUT, MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES,        & ! Input  Dimensions (VLIDORT)
