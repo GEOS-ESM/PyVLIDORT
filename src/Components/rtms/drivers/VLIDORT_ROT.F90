@@ -50,7 +50,7 @@ module VLIDORT_ROT
     integer                       :: i,j, ier
    
     type(VLIDORT_scat)            :: SCAT
-    type(VLIDORT_output_scalar)   :: output  
+    type(VLIDORT_output)   :: output  
 
     rc = 0
     ier = 0

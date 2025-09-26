@@ -122,7 +122,7 @@ subroutine VLIDORT_Vector_OCIGissCX (km, nch, nobs,channels, nstreams, plane_par
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -208,13 +208,13 @@ subroutine VLIDORT_Vector_OCIGissCX (km, nch, nobs,channels, nstreams, plane_par
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -306,7 +306,7 @@ subroutine VLIDORT_Vector_OCICX (km, nch, nobs,channels, nstreams, plane_paralle
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -388,13 +388,13 @@ subroutine VLIDORT_Vector_OCICX (km, nch, nobs,channels, nstreams, plane_paralle
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -481,7 +481,7 @@ subroutine VLIDORT_Scalar_CX (km, nch, nobs,channels, nstreams, plane_parallel, 
   integer             :: i,j,n,p,ier
 
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_scalar)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -536,8 +536,8 @@ subroutine VLIDORT_Scalar_CX (km, nch, nobs,channels, nstreams, plane_parallel, 
                                     sensor_zenith(j),relat_azymuth(j),scalar
 
           end if
-          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j),&
-                                    sensor_zenith(j),relat_azymuth(j),scalar,rc)
+          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j:j),&
+                                    sensor_zenith(j:j),relat_azymuth(j:j),scalar,rc)
           if ( rc /= 0 ) return
 
           SCAT%wavelength = channels(i)
@@ -559,10 +559,10 @@ subroutine VLIDORT_Scalar_CX (km, nch, nobs,channels, nstreams, plane_parallel, 
             print*,channels(i),tau(1,i,j),ssa(1,i,j),g(1,i,j),pmom(1,i,j,1,1)
           end if
 
-          call VLIDORT_Run_Scalar (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
 
            if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -652,7 +652,7 @@ subroutine VLIDORT_Vector_CX_SingleGeom (km, nch, nobs,channels, nstreams, plane
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -706,8 +706,8 @@ subroutine VLIDORT_Vector_CX_SingleGeom (km, nch, nobs,channels, nstreams, plane
                                     sensor_zenith(j),relat_azymuth(j)
           end if
           scalar = .false.
-          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j),&
-                                    sensor_zenith(j),relat_azymuth(j),scalar,rc)
+          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j:j),&
+                                    sensor_zenith(j:j),relat_azymuth(j:j),scalar,rc)
 
           if ( verbose > 0 ) then
             print*, 'FINISHED COX MUNK'
@@ -734,13 +734,13 @@ subroutine VLIDORT_Vector_CX_SingleGeom (km, nch, nobs,channels, nstreams, plane
           BRDF_U(j,i) = 0     
 
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -830,8 +830,8 @@ subroutine VLIDORT_Vector_CX_MultiGeom (km, nch, nobs, ngeom, channels, nstreams
   
   integer             :: i,j,n,p,ier,g 
   
-  type(VLIDORT_scat_multigeom) :: SCAT
-  type(VLIDORT_output_vector_multigeom)  :: output  
+  type(VLIDORT_scat) :: SCAT
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -918,7 +918,7 @@ subroutine VLIDORT_Vector_CX_MultiGeom (km, nch, nobs, ngeom, channels, nstreams
             BRDF_U(j,i,g) = 0     
           end do
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
           radiance_VL_SURF(j,i,:)    = output%radiance
@@ -1026,7 +1026,7 @@ subroutine VLIDORT_Vector_CX_Cloud_SingleGeom (km, nch, nobs,channels, nstreams,
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -1080,8 +1080,8 @@ subroutine VLIDORT_Vector_CX_Cloud_SingleGeom (km, nch, nobs,channels, nstreams,
                                     sensor_zenith(j),relat_azymuth(j)
           end if
           scalar = .false.
-          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j),&
-                                    sensor_zenith(j),relat_azymuth(j),scalar,rc)
+          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith(j:j),&
+                                    sensor_zenith(j:j),relat_azymuth(j:j),scalar,rc)
 
           if ( verbose > 0 ) then
             print*, 'FINISHED COX MUNK'
@@ -1115,13 +1115,13 @@ subroutine VLIDORT_Vector_CX_Cloud_SingleGeom (km, nch, nobs,channels, nstreams,
           BRDF_U(j,i) = 0     
 
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -1222,8 +1222,8 @@ subroutine VLIDORT_Vector_CX_Cloud_MultiGeom (km, nch, nobs, ngeom, channels, ns
   
   integer             :: i,j,n,p,ier,g 
   
-  type(VLIDORT_scat_multigeom) :: SCAT
-  type(VLIDORT_output_vector_multigeom)  :: output  
+  type(VLIDORT_scat) :: SCAT
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -1317,7 +1317,7 @@ subroutine VLIDORT_Vector_CX_Cloud_MultiGeom (km, nch, nobs, ngeom, channels, ns
             BRDF_U(j,i,g) = 0     
           end do
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
           radiance_VL_SURF(j,i,:)    = output%radiance
@@ -1421,7 +1421,7 @@ subroutine VLIDORT_Vector_CX_NOBM (km, nch, nobs,channels, nstreams, plane_paral
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -1475,8 +1475,8 @@ subroutine VLIDORT_Vector_CX_NOBM (km, nch, nobs,channels, nstreams, plane_paral
                                     sensor_zenith(j),relat_azymuth(j)
           end if
           scalar = .false.
-          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j),&
-                                    sensor_zenith(j),relat_azymuth(j),scalar,rc)
+          call VLIDORT_CoxMunk(SCAT%Surface,U10m(j),V10m(j),mr(i),solar_zenith (j:j),&
+                                    sensor_zenith(j:j),relat_azymuth(j:j),scalar,rc)
 
           if ( rc /= 0 ) return
           ! must be called second
@@ -1515,16 +1515,16 @@ subroutine VLIDORT_Vector_CX_NOBM (km, nch, nobs,channels, nstreams, plane_paral
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if (sleave_adjust) then
-              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE
+              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE(1)
           else
               if (present(ADJUSTED_SLEAVE)) then
                 ADJUSTED_SLEAVE(j,i) = 0.0
@@ -1613,7 +1613,7 @@ subroutine VLIDORT_Scalar_GissCX (km, nch, nobs,channels, nstreams, plane_parall
   integer             :: i,j,n,p,ier
 
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_scalar)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -1691,10 +1691,10 @@ subroutine VLIDORT_Scalar_GissCX (km, nch, nobs,channels, nstreams, plane_parall
             print*,channels(i),tau(1,i,j),ssa(1,i,j),g(1,i,j),pmom(1,i,j,1,1)
           end if
 
-          call VLIDORT_Run_Scalar (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
 
            if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -1784,7 +1784,7 @@ subroutine VLIDORT_Vector_GissCX (km, nch, nobs,channels, nstreams, plane_parall
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -1866,13 +1866,13 @@ subroutine VLIDORT_Vector_GissCX (km, nch, nobs,channels, nstreams, plane_parall
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -1969,7 +1969,7 @@ subroutine VLIDORT_Scalar_GissCX_Cloud (km, nch, nobs,channels, nstreams, plane_
   integer             :: i,j,n,p,ier
 
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_scalar)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -2055,10 +2055,10 @@ subroutine VLIDORT_Scalar_GissCX_Cloud (km, nch, nobs,channels, nstreams, plane_
             print*,channels(i),tau(1,i,j),ssa(1,i,j),g(1,i,j),pmom(1,i,j,1,1)
           end if
 
-          call VLIDORT_Run_Scalar_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
 
            if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -2159,7 +2159,7 @@ subroutine VLIDORT_Scalar_OCIGissCX_Cloud (km, nch, nobs,channels, nstreams, pla
   integer             :: i,j,n,p,ier
 
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_scalar)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -2248,10 +2248,10 @@ subroutine VLIDORT_Scalar_OCIGissCX_Cloud (km, nch, nobs,channels, nstreams, pla
             print*,channels(i),tau(1,i,j),ssa(1,i,j),g(1,i,j),pmom(1,i,j,1,1)
           end if
 
-          call VLIDORT_Run_Scalar_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
 
            if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -2349,7 +2349,7 @@ subroutine VLIDORT_Vector_GissCX_Cloud (km, nch, nobs,channels, nstreams, plane_
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -2438,13 +2438,13 @@ subroutine VLIDORT_Vector_GissCX_Cloud (km, nch, nobs,channels, nstreams, plane_
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -2546,7 +2546,7 @@ subroutine VLIDORT_Vector_OCIGissCX_Cloud (km, nch, nobs,channels, nstreams, pla
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -2639,13 +2639,13 @@ subroutine VLIDORT_Vector_OCIGissCX_Cloud (km, nch, nobs,channels, nstreams, pla
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -2750,7 +2750,7 @@ subroutine VLIDORT_Scalar_GissCX_NOBM_Cloud (km, nch, nobs,channels, nstreams, p
   integer             :: i,j,n,p,ier
 
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_scalar)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -2848,12 +2848,12 @@ subroutine VLIDORT_Scalar_GissCX_NOBM_Cloud (km, nch, nobs,channels, nstreams, p
             print*,channels(i),tau(1,i,j),ssa(1,i,j),g(1,i,j),pmom(1,i,j,1,1)
           end if
 
-          call VLIDORT_Run_Scalar_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
           if (sleave_adjust) then
-              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE
+              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE(1)
           else
               if (present(ADJUSTED_SLEAVE)) then
                 ADJUSTED_SLEAVE(j,i) = 0.0
@@ -2966,7 +2966,7 @@ subroutine VLIDORT_Scalar_OCIGissCX_NOBM_Cloud (km, nch, nobs,channels, nstreams
   integer             :: i,j,n,p,ier
 
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_scalar)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -3067,13 +3067,13 @@ subroutine VLIDORT_Scalar_OCIGissCX_NOBM_Cloud (km, nch, nobs,channels, nstreams
             print*,channels(i),tau(1,i,j),ssa(1,i,j),g(1,i,j),pmom(1,i,j,1,1)
           end if
 
-          call VLIDORT_Run_Scalar_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
 
           if (sleave_adjust) then
-              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE
+              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE(1)
           else
               if (present(ADJUSTED_SLEAVE)) then
                 ADJUSTED_SLEAVE(j,i) = 0.0
@@ -3182,7 +3182,7 @@ subroutine VLIDORT_Vector_GissCX_NOBM_Cloud (km, nch, nobs,channels, nstreams, p
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -3283,15 +3283,15 @@ subroutine VLIDORT_Vector_GissCX_NOBM_Cloud (km, nch, nobs,channels, nstreams, p
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
           if (sleave_adjust) then
-              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE
+              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE(1)
           else
               if (present(ADJUSTED_SLEAVE)) then
                 ADJUSTED_SLEAVE(j,i) = 0.0
@@ -3404,7 +3404,7 @@ subroutine VLIDORT_Vector_OCIGissCx_NOBM_Cloud (km, nch, nobs,channels, nstreams
   integer             :: i,j,n,p,ier 
   
   type(VLIDORT_scat) :: SCAT
-  type(VLIDORT_output_vector)  :: output  
+  type(VLIDORT_output)  :: output  
 
   rc = 0
   ier = 0
@@ -3508,13 +3508,13 @@ subroutine VLIDORT_Vector_OCIGissCx_NOBM_Cloud (km, nch, nobs,channels, nstreams
           BRDF_U(j,i) = SCAT%Surface%Base%VIO%VBRDF_Sup_Out%BS_DBOUNCE_BRDFUNC(3,1,1,1)     
 
          
-          call VLIDORT_Run_Vector_Cloud (SCAT, output, ier)
+          call VLIDORT_Run (SCAT, output, ier)
 
 
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
 
           if ( ier /= 0 ) then
               radiance_VL_SURF(j,i) = MISSING
@@ -3522,7 +3522,7 @@ subroutine VLIDORT_Vector_OCIGissCx_NOBM_Cloud (km, nch, nobs,channels, nstreams
               cycle
           end if
           if (sleave_adjust) then
-              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE
+              ADJUSTED_SLEAVE(j,i) = output%ADJUSTED_SLEAVE(1)
           else
               if (present(ADJUSTED_SLEAVE)) then
                 ADJUSTED_SLEAVE(j,i) = 0.0

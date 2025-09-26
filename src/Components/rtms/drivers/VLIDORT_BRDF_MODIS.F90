@@ -97,7 +97,7 @@ module VLIDORT_BRDF_MODIS
 
   
     type(VLIDORT_scat)           :: SCAT
-    type(VLIDORT_output_scalar)  :: output
+    type(VLIDORT_output)         :: output
 
     rc = 0
     ier = 0
@@ -149,8 +149,8 @@ module VLIDORT_BRDF_MODIS
         if ( verbose > 0 ) then
           print*, 'DO MODIS BRDF'
         end if
-        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j),&
-                               sensor_zenith(j),relat_azymuth(j),&
+        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j:j),&
+                               sensor_zenith(j:j),relat_azymuth(j:j),&
                                kernel_wt(1,i,j),kernel_wt(2,i,j),kernel_wt(3,i,j),&
                                reshape(param(:,i,j),(/nparam/)),&
                                scalar,rc)
@@ -174,10 +174,10 @@ module VLIDORT_BRDF_MODIS
           cycle
         end if
          
-        call VLIDORT_Run_Scalar (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
-        radiance_VL_SURF(j,i)    = output%radiance
-        reflectance_VL_SURF(j,i) = output%reflectance
+        radiance_VL_SURF(j,i)    = output%radiance(1)
+        reflectance_VL_SURF(j,i) = output%reflectance(1)
 
         if ( verbose > 0 ) then
           print *, 'My radiance land modis',radiance_VL_SURF(j,i), reflectance_VL_SURF(j,i) 
@@ -280,7 +280,7 @@ module VLIDORT_BRDF_MODIS
 
     
     type(VLIDORT_scat) :: SCAT
-    type(VLIDORT_output_vector)  :: output
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -348,8 +348,8 @@ module VLIDORT_BRDF_MODIS
         end if
 
         scalar = .true.
-        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j),&
-                               sensor_zenith(j),relat_azymuth(j),&
+        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j:j),&
+                               sensor_zenith(j:j),relat_azymuth(j:j),&
                                kernel_wt(1,i,j),kernel_wt(2,i,j),kernel_wt(3,i,j),&
                                reshape(param(:,i,j),(/nparam/)),&
                                scalar,rc)
@@ -377,18 +377,18 @@ module VLIDORT_BRDF_MODIS
           cycle
         end if
 
-        call VLIDORT_Run_Vector (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
-          radiance_VL_SURF(j,i)    = output%BOA_radiance
-          reflectance_VL_SURF(j,i) = output%BOA_reflectance
-          Q(j,i)                   = output%BOA_Q
-          U(j,i)                   = output%BOA_U                          
+          radiance_VL_SURF(j,i)    = output%BOA_radiance(1)
+          reflectance_VL_SURF(j,i) = output%BOA_reflectance(1)
+          Q(j,i)                   = output%BOA_Q(1)
+          U(j,i)                   = output%BOA_U(1)                       
         else
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
         end if
 
         if ( ier /= 0 ) then
@@ -487,8 +487,8 @@ module VLIDORT_BRDF_MODIS
     integer             :: i,j,n,p,ier,g
 
     
-    type(VLIDORT_scat_multigeom) :: SCAT
-    type(VLIDORT_output_vector_multigeom)  :: output
+    type(VLIDORT_scat) :: SCAT
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -590,7 +590,7 @@ module VLIDORT_BRDF_MODIS
             cycle
           end if
         end do
-        call VLIDORT_Run_Vector (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
           radiance_VL_SURF(j,i,:)    = output%BOA_radiance
@@ -705,7 +705,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
 
   
     type(VLIDORT_scat)     :: SCAT
-    type(VLIDORT_output_scalar)  :: output
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -760,8 +760,8 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
         if ( verbose > 0 ) then
           print*, 'DO MODIS BRDF'
         end if
-        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j),&
-                               sensor_zenith(j),relat_azymuth(j),&
+        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j:j),&
+                               sensor_zenith(j:j),relat_azymuth(j:j),&
                                kernel_wt(1,i,j),kernel_wt(2,i,j),kernel_wt(3,i,j),&
                                reshape(param(:,i,j),(/nparam/)),&
                                scalar,rc)
@@ -794,10 +794,10 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
           cycle
         end if
          
-        call VLIDORT_Run_Scalar_Cloud (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
-        radiance_VL_SURF(j,i)    = output%radiance
-        reflectance_VL_SURF(j,i) = output%reflectance
+        radiance_VL_SURF(j,i)    = output%radiance(i)
+        reflectance_VL_SURF(j,i) = output%reflectance(i)
 
         if ( verbose > 0 ) then
           print *, 'My radiance land modis',radiance_VL_SURF(j,i), reflectance_VL_SURF(j,i) 
@@ -912,7 +912,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
 
     
     type(VLIDORT_scat) :: SCAT
-    type(VLIDORT_output_vector)  :: output
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -983,8 +983,8 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
         end if
 
         scalar = .true.
-        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j),&
-                               sensor_zenith(j),relat_azymuth(j),&
+        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j:j),&
+                               sensor_zenith(j:j),relat_azymuth(j:j),&
                                kernel_wt(1,i,j),kernel_wt(2,i,j),kernel_wt(3,i,j),&
                                reshape(param(:,i,j),(/nparam/)),&
                                scalar,rc)
@@ -1019,18 +1019,18 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
           cycle
         end if
 
-        call VLIDORT_Run_Vector_Cloud (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
-          radiance_VL_SURF(j,i)    = output%BOA_radiance
-          reflectance_VL_SURF(j,i) = output%BOA_reflectance
-          Q(j,i)                   = output%BOA_Q
-          U(j,i)                   = output%BOA_U                          
+          radiance_VL_SURF(j,i)    = output%BOA_radiance(1)
+          reflectance_VL_SURF(j,i) = output%BOA_reflectance(1)
+          Q(j,i)                   = output%BOA_Q(1)
+          U(j,i)                   = output%BOA_U(1)                       
         else
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
         end if
 
         if ( ier /= 0 ) then
@@ -1142,8 +1142,8 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     integer             :: i,j,n,p,ier,g
 
     
-    type(VLIDORT_scat_multigeom) :: SCAT
-    type(VLIDORT_output_vector_multigeom)  :: output
+    type(VLIDORT_scat) :: SCAT
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -1255,7 +1255,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
             cycle
           end if
         end do
-        call VLIDORT_Run_Vector_Cloud (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
           radiance_VL_SURF(j,i,:)    = output%BOA_radiance

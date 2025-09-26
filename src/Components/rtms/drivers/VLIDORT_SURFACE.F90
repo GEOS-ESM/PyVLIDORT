@@ -109,8 +109,8 @@ module VLIDORT_SURFACE
         if ( verbose > 0 ) then
           print*, 'DO MODIS BRDF'
         end if
-        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j),&
-                               sensor_zenith(j),relat_azymuth(j),&
+        call VLIDORT_LANDMODIS(SCAT%Surface,solar_zenith(j:j),&
+                               sensor_zenith(j:j),relat_azymuth(j:j),&
                                kernel_wt(1,i,j),kernel_wt(2,i,j),kernel_wt(3,i,j),&
                                reshape(param(:,i,j),(/nparam/)),&
                                scalar,rc)
