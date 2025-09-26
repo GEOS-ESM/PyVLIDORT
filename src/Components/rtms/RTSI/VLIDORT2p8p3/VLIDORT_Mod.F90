@@ -46,7 +46,8 @@
 	      TYPE VLIDORT
 		logical     :: initialized = .false.  
         integer     :: NGREEK_MOMENTS_INPUT = 300    ! Number of scattering matrix expansion coefficients
-        integer     :: NSTREAMS = 6        ! Number of half-space streams
+        integer     :: Max_InAngles = 371  ! Maximum Number of F-matrix angles
+        integer     :: NSTREAMS = 8        ! Number of half-space streams
 		integer     :: NBEAMS = 1          ! Number of solar zenith angles
 		integer     :: N_USER_STREAMS = 1  ! Number of Viewing zenith angles
 		integer     :: N_USER_RELAZMS = 1  ! Number of relative azimuth angles
@@ -86,11 +87,13 @@
       logical                                :: DO_FULLRAD_MODE
       logical                                :: DO_FOCORR_NADIR
       logical                                :: DO_FOCORR_OUTGOING
+      logical                                :: DO_MSSTS
       logical                                :: DO_SSCORR_TRUNCATION
       logical                                :: DO_FOCORR
       logical                                :: DO_FOCORR_EXTERNAL
       logical                                :: DO_SSCORR_USEFMAT 
       logical                                :: DO_DOUBLE_CONVTEST
+      logical                                :: DO_FOURIER0_NSTOKES2
       logical                                :: DO_SOLAR_SOURCES
       logical                                :: DO_PLANE_PARALLEL
       logical                                :: DO_OBSERVATION_GEOMETRY
@@ -168,21 +171,23 @@
 !                         ------------------
 
       DO_FULLRAD_MODE    = .true.  ! Do full Stokes vector calculation?  If false, and DO_FOCORR is true, returns single scatter
-      DO_FOCORR_NADIR    = .false. ! Do nadir single scatter correction?
-      DO_FOCORR_OUTGOING = .true.  ! Do outgoing single scatter correction?
+      DO_FOCORR_NADIR    = .false. ! Do nadir single scatter correction? only the incoming solar beam is treated in spherical geometry
+      DO_FOCORR_OUTGOING = .true.  ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
+      ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
+      DO_MSSTS           = .false.  ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation
       DO_FOCORR          = .true.  ! Do First-Order correction?  Must be set tu use exact single scatter instead of the truncated phase function
       DO_FOCORR_EXTERNAL = .false. ! Use First-Order results computed externally
-      DO_SSCORR_USEFMAT  = .false. ! Use direct F-matrix inputs
+      DO_SSCORR_USEFMAT  = .true. ! Use direct F-matrix inputs
 !      DO_DBCORRECTION    = .true.  ! Do direct beam correction?
       DO_DOUBLE_CONVTEST = .true.  ! Perform double convergence test?
-       
+      DO_FOURIER0_NSTOKES2 = .true. ! Performance enhancement. For Fourier m= 0 uses NTOKES = 2. 
 !                            Solar Sources
 !                            -------------
 
       DO_SOLAR_SOURCES    = .true.     ! Include solar sources?
       DO_PLANE_PARALLEL   = self%DO_PLANE_PARALLEL    ! Plane-parallel treatment of direct beam?
       DO_CHAPMAN_FUNCTION = .true.     ! Perform internal Chapman function calculation?
-      DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere?
+      DO_REFRACTIVE_GEOMETRY = .true. ! Beam path with refractive atmosphere?
      
 !                         Performance Control
 !                         -------------------
@@ -221,7 +226,7 @@
 
       NSTREAMS = self%NSTREAMS         ! Number of half-space streams
       NLAYERS = km                    ! Number of atmospheric layers
-      NFINELAYERS = 3                 ! Number of fine layers (outgoing sphericity correction)
+      NFINELAYERS = 4                 ! Number of fine layers (outgoing sphericity correction)
       NGREEK_MOMENTS_INPUT = self%NGREEK_MOMENTS_INPUT     ! Number of scattering matrix expansion coefficients
       TAYLOR_ORDER = 3                ! Number of small-number terms in Taylor series expansions
       N_USER_OBSGEOMS = self%N_USER_OBSGEOMS             ! Number of observation Geometry inputs 
@@ -268,8 +273,8 @@
       self%VIO%VLIDORT_FixIn%Bool%TS_DO_UPWELLING           = DO_UPWELLING
       self%VIO%VLIDORT_FixIn%Bool%TS_DO_DNWELLING           = DO_DNWELLING
       !self%VIO%VLIDORT_FixIn%Bool%TS_DO_LAMBERTIAN_SURFACE = DO_LAMBERTIAN_SURFACE
-
-
+      self%VIO%VLIDORT_FixIn%Bool%TS_DO_MSSTS               = DO_MSSTS
+      self%VIO%VLIDORT_FixIn%Bool%TS_DO_FOURIER0_NSTOKES2   = DO_FOURIER0_NSTOKES2
 !  Modified Boolean inputs
 
       self%VIO%VLIDORT_ModIn%MBool%TS_DO_FOCORR_NADIR        = DO_FOCORR_NADIR
@@ -306,7 +311,7 @@
       self%VIO%VLIDORT_FixIn%Cont%TS_TF_MAXITER             = TF_MAXITER
       self%VIO%VLIDORT_FixIn%Cont%TS_TF_CRITERION           = TF_CRITERION
       ! this has to be initialized here
-      self%VIO%VLIDORT_FixIn%Cont%TS_ASYMTX_TOLERANCE       = 1.0d-12
+      self%VIO%VLIDORT_FixIn%Cont%TS_ASYMTX_TOLERANCE       = 1.0d-20
 !  Modified control inputs
 
       self%VIO%VLIDORT_ModIn%Mcont%TS_NGREEK_MOMENTS_INPUT   = NGREEK_MOMENTS_INPUT
