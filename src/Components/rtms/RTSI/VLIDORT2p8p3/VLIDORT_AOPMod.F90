@@ -8,21 +8,60 @@
 
       USE VLIDORT_Mod
       USE VLIDORT_SurfaceMod
-      USE VLIDORT_v_ScatMod
 
       implicit NONE
 
-      PUBLIC  VLIDORT_Rayleigh        ! Calculates layer rayleigh optical thickness
-      PUBLIC  VLIDORT_CombineAOP      ! Combines layer atmosphere optical properties to get final VLIDORT inputs
-          
       type VLIDORT_aop
-         real*8, pointer          :: greekmat_total_input(:,:,:)  
+         real*8, pointer          :: greekmat_total_input(:,:,:)
          real*8, pointer          :: deltau_vert_input(:)
          real*8, pointer          :: omega_total_input(:)
          real*8, pointer          :: fmatrix_up(:,:,:)
          real*8, pointer          :: fmatrix_dn(:,:,:)
 
       end type VLIDORT_aop
+
+
+      type VLIDORT_scat
+         integer         :: NSTOKES             ! Number of stokes vectors
+         logical         :: DO_2OS_CORRECTION = .false.   ! Flag to control 2OS Correction (not used here but needed so drivers can work with multiple VLIDORT versions)
+         logical         :: DO_BOA = .false.       ! Flag to control whether to do additional down welling calc at BOA
+         real*8          :: wavelength          ! in [nm]
+         integer         :: nMom                ! number of momemts read (phase function)
+         integer         :: nPol                ! number of components of the scattering matrix
+         integer         :: N_InAngles          ! number of scattering matrix angles
+         real*8, pointer :: InAngles(:)         ! scattering matrix angles
+         real*8          :: MISSING             ! MISSING VALUE
+         real*8, pointer :: rot(:)              ! rayleigh optical thickness
+         real*8, pointer :: depol_ratio
+         real*8, pointer :: alpha(:)            ! trace gas absorption optical thickness
+         real*8, pointer :: tau(:)              ! aerosol tau
+         real*8, pointer :: ssa(:)              ! aerosol ssa
+         real*8, pointer ::   g(:)              ! aerosol asymmetry factor
+         real*8, pointer ::  pe(:)              ! pressure    at layer edges [Pa]
+         real*8, pointer ::  ze(:)              ! height      at layer edges [m]
+         real*8, pointer ::  te(:)              ! temperature at layer edges [K]
+         real*8, pointer :: pmom(:,:,:)         ! moments of the scattering phase matrix
+         real*8, pointer :: fmatrix(:,:,:)      ! scattering phase matrix
+         real*8, pointer :: tauI(:)             ! ice cloud tau
+         real*8, pointer :: ssaI(:)             ! ice cloud ssa
+         real*8, pointer ::   gI(:)             ! ice cloud asymmetry factor
+         real*8, pointer :: pmomI(:,:,:)        ! ice cloud moments of the scattering phase matrix
+         real*8, pointer :: fmatrixI(:,:,:)     ! ice cloud scattering phase matrix
+         real*8, pointer :: tauL(:)             ! liquid cloud tau
+         real*8, pointer :: ssaL(:)             ! liquid cloud ssa
+         real*8, pointer ::   gL(:)             ! liquid cloud asymmetry factor
+         real*8, pointer :: pmomL(:,:,:)        ! liquid cloud moments of the scattering phase matrix
+         real*8, pointer :: fmatrixL(:,:,:)     ! liquid cloud scattering phase matrix
+
+         type(VLIDORT_Surface)           :: Surface
+         type(VLIDORT_AOP)               :: AOP
+
+      end type VLIDORT_scat
+
+
+      PUBLIC  VLIDORT_Rayleigh        ! Calculates layer rayleigh optical thickness
+      PUBLIC  VLIDORT_CombineAOP      ! Combines layer atmosphere optical properties to get final VLIDORT inputs
+          
        
       Contains
 
@@ -190,6 +229,7 @@
       integer                                            :: i, j, k, l, m, n
       integer                                            :: IDR, ierror
       integer                                            :: NLAYERS
+      real*8                                             :: DEPOL_RATIO
       real*8                                             :: ray_l     
       real*8                                             :: alpha_l 
       real*8                                             :: tau_l 
@@ -230,11 +270,11 @@
 
       real*8                                             :: difz
 
-      real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: greekmat_total_input                     
-      real*8, dimension(MAXLAYERS)                       :: deltau_vert_input
-      real*8, dimension(MAXLAYERS)                       :: omega_total_input
-      real*8, dimension(MAXLAYERS, MAX_GEOMETRIES, 6)    :: fmatrix_up
-      real*8, dimension(MAXLAYERS, MAX_GEOMETRIES, 6)    :: fmatrix_dn
+      real*8, target, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: greekmat_total_input                     
+      real*8, target, dimension(MAXLAYERS)                       :: deltau_vert_input
+      real*8, target, dimension(MAXLAYERS)                       :: omega_total_input
+      real*8, target, dimension(MAXLAYERS, MAX_GEOMETRIES, 6)    :: fmatrix_up
+      real*8, target, dimension(MAXLAYERS, MAX_GEOMETRIES, 6)    :: fmatrix_dn
 
       integer                                            :: N_GEOMS, N_SZAS, N_VZAS, N_AZMS
       integer                                            :: OFFSETS ( MAX_SZANGLES, MAX_USER_VZANGLES )
@@ -344,7 +384,7 @@
           Call vfzmat_Master &
            ( MAXMOMENTS_INPUT, MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES,        & ! Input  Dimensions (VLIDORT)
              MAX_USER_RELAZMS, MAXLAYERS,                                              & ! Input  Dimensions (VLIDORT)
-             self%Surface%Base%Max_InAngles, self%N_InAngles, self%InAngles, self%fmatrix, Exist_InFmatrices,       & ! Input  Fmatrices
+             self%Surface%Base%Max_InAngles, self%N_InAngles, self%InAngles, self%fmatrixL, Exist_InFmatrices,       & ! Input  Fmatrices
              do_upwelling, do_dnwelling, do_ObsGeoms, do_Sunlight,                     & ! Input  Flags
              self%nmom, NLAYERS, self%NSTOKES, N_GEOMS, N_SZAS, N_VZAS, N_AZMS,        & ! Input  Numbers
              OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS,                          & ! Input  Geometries
@@ -356,7 +396,7 @@
           Call vfzmat_Master &
            ( MAXMOMENTS_INPUT, MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES,        & ! Input  Dimensions (VLIDORT)
              MAX_USER_RELAZMS, MAXLAYERS,                                              & ! Input  Dimensions (VLIDORT)
-             self%Surface%Base%Max_InAngles, self%N_InAngles, self%InAngles, self%fmatrix, Exist_InFmatrices,       & ! Input  Fmatrices
+             self%Surface%Base%Max_InAngles, self%N_InAngles, self%InAngles, self%fmatrixI, Exist_InFmatrices,       & ! Input  Fmatrices
              do_upwelling, do_dnwelling, do_ObsGeoms, do_Sunlight,                     & ! Input  Flags
              self%nmom, NLAYERS, self%NSTOKES, N_GEOMS, N_SZAS, N_VZAS, N_AZMS,        & ! Input  Numbers
              OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS,                          & ! Input  Geometries
@@ -534,10 +574,10 @@
          clIswt = ssaI_l * tauI_l/ tau_scat
 
          if ( self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_SSCORR_USEFMAT ) then  ! Combine the fmatrices
-            fmatrix_up(i,1:N_GEOMS,:) = raywt * RayFmatrices_up(1:N_GEOMS,:) + aerwt * AerFmatrices_up(1:N_GEOMS,i,:) + &
-                                        clLwt * clLFmatrices_up(1:N_GEOMS,i,:) + clIwt * clIFmatrices_up(1:N_GEOMS,i,:)
-            fmatrix_dn(i,1:N_GEOMS,:) = raywt * RayFmatrices_dn(1:N_GEOMS,:) + aerwt * OutFmatrices_dn(1:N_GEOMS,i,:) + &
-                                        clLwt * clLFmatrices_dn(1:N_GEOMS,i,:) + clIwt * clIFmatrices_dn(1:N_GEOMS,i,:)
+            fmatrix_up(i,1:N_GEOMS,:) = rayswt * RayFmatrices_up(1:N_GEOMS,i,:) + aerswt * AerFmatrices_up(1:N_GEOMS,i,:) + &
+                                        clLswt * clLFmatrices_up(1:N_GEOMS,i,:) + clIswt * clIFmatrices_up(1:N_GEOMS,i,:)
+            fmatrix_dn(i,1:N_GEOMS,:) = rayswt * RayFmatrices_dn(1:N_GEOMS,i,:) + aerswt * AerFmatrices_dn(1:N_GEOMS,i,:) + &
+                                        clLswt * clLFmatrices_dn(1:N_GEOMS,i,:) + clIswt * clIFmatrices_dn(1:N_GEOMS,i,:)
          end if 
  
          ! Both approaches need to combine the moments
