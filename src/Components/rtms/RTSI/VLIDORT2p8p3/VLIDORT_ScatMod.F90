@@ -15,44 +15,9 @@
 
       implicit NONE
 
-      PUBLIC  VLIDORT_Run_Vector      ! Run for each profile (pixel) 
+      PUBLIC  VLIDORT_Run      ! Run for each profile (pixel) 
           
-
-      type VLIDORT_scat
-         integer         :: NSTOKES             ! Number of stokes vectors
-         logical         :: DO_2OS_CORRECTION = .false.   ! Flag to control 2OS Correction (not used here but needed so drivers can work with multiple VLIDORT versions)
-         logical         :: DO_BOA = .false.       ! Flag to control whether to do additional down welling calc at BOA
-         real*8          :: wavelength          ! in [nm]
-         integer         :: nMom                ! number of momemts read (phase function)
-         integer         :: nPol                ! number of components of the scattering matrix
-         real*8          :: MISSING             ! MISSING VALUE
-         real*8, pointer :: rot(:)              ! rayleigh optical thickness
-         real*8, pointer :: depol_ratio
-         real*8, pointer :: alpha(:)            ! trace gas absorption optical thickness
-         real*8, pointer :: tau(:)              ! aerosol tau
-         real*8, pointer :: ssa(:)              ! aerosol ssa
-         real*8, pointer ::   g(:)              ! aerosol asymmetry factor
-         real*8, pointer ::  pe(:)              ! pressure    at layer edges [Pa]
-         real*8, pointer ::  ze(:)              ! height      at layer edges [m]
-         real*8, pointer ::  te(:)              ! temperature at layer edges [K]
-         real*8, pointer :: pmom(:,:,:)          ! components of the scattering phase matrix
-         real*8, pointer :: tauI(:)             ! ice cloud tau
-         real*8, pointer :: ssaI(:)             ! ice cloud ssa
-         real*8, pointer ::   gI(:)             ! ice cloud asymmetry factor
-         real*8, pointer :: pmomI(:,:,:)        ! ice cloud components of the scattering phase matrix
-         real*8, pointer :: tauL(:)             ! liquid cloud tau
-         real*8, pointer :: ssaL(:)             ! liquid cloud ssa
-         real*8, pointer ::   gL(:)             ! liquid cloud asymmetry factor
-         real*8, pointer :: pmomL(:,:,:)        ! liquid cloud components of the scattering phase matrix
-
-         type(VLIDORT_Surface)           :: Surface
-         type(VLIDORT_AOP)               :: AOP
-
-      end type VLIDORT_scat
-
-
-
-      type VLIDORT_output_vector
+      type VLIDORT_output
          real*8, pointer     :: radiance(:)    ! TOA radiance
          real*8, pointer     :: reflectance(:) ! TOA reflectance
          real*8, pointer     :: U(:)           ! U Stokes component
@@ -66,12 +31,12 @@
          real*8, pointer     :: BOA_V(:)           ! V Stokes component
 
          real*8, pointer     :: ADJUSTED_SLEAVE(:) ! Adjusted water leaving radiance
-      end type VLIDORT_output_vector
+      end type VLIDORT_output
 
        
       Contains
 !.............................................................................
-      subroutine VLIDORT_Run_Vector (self, output, rc)
+      subroutine VLIDORT_Run (self, output, rc)
 !
 !     Computes radiances for a single wavelength, pixel. Optical properties
 !     and met fields in self are assumed to have been updated with the
@@ -90,7 +55,7 @@
       USE VLIDORT_AOPMod
 
       type(VLIDORT_scat),    intent(inout)        :: self        ! Contains most input
-      type(VLIDORT_output_vector), intent(out)    :: output      ! contains output
+      type(VLIDORT_output),  intent(out)          :: output      ! contains output
       integer,                     intent(out)    :: rc
 
 !                           ----
@@ -297,7 +262,7 @@
           output%ADJUSTED_SLEAVE = self%Surface%Base%VIO%VLIDORT_Out%WLOut%TS_WLADJUSTED_ISOTROPIC(1,1:self%Surface%Base%N_USER_OBSGEOMS)
       end if
     
-      end subroutine VLIDORT_Run_Vector
+      end subroutine VLIDORT_Run
 
 !.............................................................................
 
