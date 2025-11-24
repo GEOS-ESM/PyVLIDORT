@@ -351,7 +351,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.getpyobsAOP(self.channels[ich])
         tau  = self.tau
         ssa  = self.ssa
-        pmom = self.pmom
+        pmatrix = self.pmatrix
         g    = self.g
 
         # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
@@ -369,7 +369,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         sza = self.SZA[iobs].astype('float64')
         raa = self.RAA[iobs].astype('float64')
 
-        return rot,depol_ratio,tau,ssa,g,pmom,pe,te,ze,param,kernel_wt,vza,sza,raa
+        return rot,depol_ratio,tau,ssa,g,pmatrix,pe,te,ze,param,kernel_wt,vza,sza,raa
 
     #---
     def runTWOSTREAM(self,p,ich):
@@ -392,11 +392,11 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             npts = eob - sob
 
             # Subset inputs for batch
-            rot,depol_ratio,tau,ssa,g,pmom,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
+            rot,depol_ratio,tau,ssa,g,pmatrix,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
 
             # trace gas absorption
             # empty for now
-            alpha = np.zeros([self.nlev,npts,1]).astype('float64')
+            alpha = np.zeros([self.nlev,1,npts]).astype('float64')
 
             # solar flux
             # ones for now
@@ -404,7 +404,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
             # create list of input arguments
             args = [(channel, self.plane_parallel, rot[:,i:i+1,:], depol_ratio,
-                    alpha[:,i:1+1,:],
+                    alpha[:,:,i:i+1],
                     tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1],
                     pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
                     kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
@@ -458,11 +458,11 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             npts = eob - sob
 
             # Subset inputs for batch
-            rot,depol_ratio,tau,ssa,g,pmom,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
+            rot,depol_ratio,tau,ssa,g,pmatrix,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
            
             # create list of input arguments
             args = [(channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
-                    tau[:,:,i:i+1], ssa[:,:,i:i+1], pmom[:,:,i:i+1,:,:],
+                    tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
                     pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
                     kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
                     sza[i:i+1], raa[i:i+1], vza[i:i+1],
