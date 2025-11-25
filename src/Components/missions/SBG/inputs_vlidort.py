@@ -50,18 +50,16 @@ class INPUTS_VLIDORT(G2GAOP):
         use pyobs utilities to get AOP
         wavelength: [nm]
         """
-        aop = self.getAOPrt(wavelength=wavelength,vector=True)
+        aop = self.getAOPrt(wavelength=wavelength,vector=True,do_g=True)
 
         # need to reshape these to [nlev,nch,nobs]
         aop = aop.expand_dims(dim={"ch": 1},axis=1)
 
         self.tau = aop.AOT.astype('float64').transpose('lev','ch','nobs').to_numpy()
         self.ssa = aop.SSA.astype('float64').transpose('lev','ch','nobs').to_numpy()
-        self.pmom = aop.PMOM.astype('float64').transpose('lev','ch','nobs','m','p').to_numpy()
+        self.g   = aop.G.astype('float64').transpose('lev','ch','nobs').to_numpy()
+        self.pmatrix = aop.PMATRIX.astype('float64').transpose('lev','ch','nobs','ang','p').to_numpy()
 
-        aop = self.getAOPrt(wavelength=wavelength)
-        aop = aop.expand_dims(dim={"ch": 1},axis=1)
-        self.g = aop.G.astype('float64').transpose('lev','ch','nobs').to_numpy()
 
     #---
     def getEdgeVars(self):
@@ -132,7 +130,6 @@ class INPUTS_VLIDORT(G2GAOP):
         
             dims = dict(self.mieTable[s]['mie'].ds.sizes)
             self.p = max(self.p,dims['p'])
-            self.m = max(self.m,dims['m'])
             self.ang = max(self.ang,dims['ang'])
 
 
