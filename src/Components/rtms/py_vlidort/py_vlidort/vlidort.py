@@ -18,15 +18,16 @@ MISSING = -1.e+20
 ncALIAS = {'LONGITUDE': 'trjLon',
            'LATITUDE': 'trjLat'}
 
-WrapperFuncs = {'MODIS_BRDF'     : VLIDORT_POLAR_.vector_brdf_modis,
-                'MODIS_BRDF_CLOUD'     : VLIDORT_POLAR_.vector_brdf_modis_cloud,
-                'MODIS_BRDF_BPDF': VLIDORT_POLAR_.vector_brdf_modis_bpdf,
-                'LAMBERTIAN'     : VLIDORT_POLAR_.vector_lambert,
-                'LAMBERTIAN_CLOUD'     : VLIDORT_POLAR_.vector_lambert_cloud,
-                'GissCX'         : VLIDORT_POLAR_.vector_gisscx,
-                'CX'             : VLIDORT_POLAR_.vector_cx,
-                'CX_CLOUD'             : VLIDORT_POLAR_.vector_cx_cloud,
-                'ROT_CALC'       : VLIDORT_POLAR_.rot_calc}              
+WrapperFuncs = {'MODIS_BRDF_PMATRIX'  : VLIDORT_POLAR_.vector_brdf_modis_pmatrix,
+                'ROT_CALC'            : VLIDORT_POLAR_.rot_calc,
+                'MODIS_BRDF_PMOM'     : VLIDORT_POLAR_.vector_brdf_modis_pmom}
+#                'MODIS_BRDF_BPDF': VLIDORT_POLAR_.vector_brdf_modis_bpdf,
+#                'LAMBERTIAN'     : VLIDORT_POLAR_.vector_lambert,
+#                'LAMBERTIAN_CLOUD'     : VLIDORT_POLAR_.vector_lambert_cloud,
+#                'GissCX'         : VLIDORT_POLAR_.vector_gisscx,
+#                'CX'             : VLIDORT_POLAR_.vector_cx,
+#                'CX_CLOUD'             : VLIDORT_POLAR_.vector_cx_cloud,
+#                'ROT_CALC'       : VLIDORT_POLAR_.rot_calc}              
 
 #---
 def CX_run(args):
@@ -65,17 +66,17 @@ def LAMBERTIAN_CLOUD_run(args):
     return I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U
 
 #---
-def MODIS_BRDF_run(args):
+def MODIS_BRDF_PMOM_run(args):
 
     # Call VLIDORT wrapper function
-    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.vector_brdf_modis(*args)
+    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.vector_brdf_modis_pmom(*args)
 
     return I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U
 #---
-def MODIS_BRDF_CLOUD_run(args):
+def MODIS_BRDF_PMATRIX_run(args):
 
     # Call VLIDORT wrapper function
-    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.vector_brdf_modis_cloud(*args)
+    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.vector_brdf_modis_pmatrix(*args)
 
     return I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U
 
