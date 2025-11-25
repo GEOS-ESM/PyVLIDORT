@@ -55,6 +55,7 @@
 		integer     :: N_USER_OBSGEOMS = 1 ! Number of azimuth angles calculated by surface supplement
 		logical     :: DO_PLANE_PARALLEL = .false.
         logical     :: DO_DEBUG_INPUT = .false. ! flag to write out debug files containing all VLIDORT inputs
+        logical     :: USEFMAT = .true.    !flat to use direct F-matrix inputs 
 		type(VLIDORT_IO) :: VIO
 
 	      END TYPE VLIDORT
@@ -177,7 +178,7 @@
       DO_MSSTS           = .false.  ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation
       DO_FOCORR          = .true.  ! Do First-Order correction?  Must be set tu use exact single scatter instead of the truncated phase function
       DO_FOCORR_EXTERNAL = .false. ! Use First-Order results computed externally
-      DO_SSCORR_USEFMAT  = .true. ! Use direct F-matrix inputs
+      DO_SSCORR_USEFMAT  = self%USEFMAT ! Use direct F-matrix inputs
 !      DO_DBCORRECTION    = .true.  ! Do direct beam correction?
       DO_DOUBLE_CONVTEST = .true.  ! Perform double convergence test?
       DO_FOURIER0_NSTOKES2 = .true. ! Performance enhancement. For Fourier m= 0 uses NTOKES = 2. 
