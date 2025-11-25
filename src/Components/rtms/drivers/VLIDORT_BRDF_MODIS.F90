@@ -6,13 +6,13 @@ module VLIDORT_BRDF_MODIS
 !.............................................................................
   implicit NONE
 
-  PUBLIC VLIDORT_Scalar_LandMODIS
-  PUBLIC VLIDORT_Vector_LandMODIS
+  PUBLIC VLIDORT_Scalar_LandMODIS_pmom
+  PUBLIC VLIDORT_Vector_LandMODIS_pmom
 
-  interface VLIDORT_Vector_LandMODIS
-    module procedure VLIDORT_Vector_LandMODIS_SingleGeom
-    module procedure VLIDORT_Vector_LandMODIS_MultiGeom
-  end interface VLIDORT_Vector_LandMODIS
+  interface VLIDORT_Vector_LandMODIS_pmom
+    module procedure VLIDORT_Vector_LandMODIS_SingleGeom_pmom
+    module procedure VLIDORT_Vector_LandMODIS_MultiGeom_pmom
+  end interface VLIDORT_Vector_LandMODIS_pmom
 
   contains
 
@@ -24,7 +24,7 @@ module VLIDORT_BRDF_MODIS
     return
   end function IS_MISSING
 
-subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_parallel, nMom, &
+subroutine VLIDORT_Scalar_LandMODIS_pmom (km, nch, nobs,channels, nstreams, plane_parallel, nMom, &
                      nPol, ROT, depol, alpha, tau, ssa, g, pmom, tauI, ssaI, gI, pmomI, tauL, ssaL, gL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -114,6 +114,7 @@ subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_par
     SCAT%Surface%Base%NSTREAMS = nstreams
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
     SCAT%Surface%Base%NGREEK_MOMENTS_INPUT = nMom
+    SCAT%Surface%Base%USEFMAT = .false.
     call VLIDORT_Init( SCAT%Surface%Base, km, rc)
     if ( rc /= 0 ) return
 
@@ -221,10 +222,10 @@ subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_par
 
     end do ! Loop over obs
 
-  end subroutine VLIDORT_Scalar_LandMODIS
+  end subroutine VLIDORT_Scalar_LandMODIS_pmom
 
   !..........................................................................
-  subroutine VLIDORT_Vector_LandMODIS_SingleGeom (km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+  subroutine VLIDORT_Vector_LandMODIS_SingleGeom_pmom (km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
                      nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -323,6 +324,7 @@ subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_par
     SCAT%Surface%Base%NSTREAMS = nstreams
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
     SCAT%Surface%Base%NGREEK_MOMENTS_INPUT = nMom
+    SCAT%Surface%Base%USEFMAT = .false.
     call VLIDORT_Init( SCAT%Surface%Base, km, rc, SCAT%DO_BOA)
     if ( rc /= 0 ) return
 
@@ -451,10 +453,10 @@ subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_par
 
     end do ! Loop over obs
 
-  end subroutine VLIDORT_Vector_LandMODIS_SingleGeom
+  end subroutine VLIDORT_Vector_LandMODIS_SingleGeom_pmom
 
   !..........................................................................
-  subroutine VLIDORT_Vector_LandMODIS_MultiGeom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom,  &
+  subroutine VLIDORT_Vector_LandMODIS_MultiGeom_pmom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom,  &
                      nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -558,6 +560,7 @@ subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_par
     SCAT%Surface%Base%N_USER_STREAMS    = ngeom
     SCAT%Surface%Base%N_USER_RELAZMS    = ngeom
     SCAT%Surface%Base%NGREEK_MOMENTS_INPUT = nMom
+    SCAT%Surface%Base%USEFMAT = .false.
     call VLIDORT_Init( SCAT%Surface%Base, km, rc, SCAT%DO_BOA)
     if ( rc /= 0 ) return
 
@@ -687,6 +690,6 @@ subroutine VLIDORT_Scalar_LandMODIS (km, nch, nobs,channels, nstreams, plane_par
 
     end do ! Loop over obs
 
-  end subroutine VLIDORT_Vector_LandMODIS_MultiGeom
+  end subroutine VLIDORT_Vector_LandMODIS_MultiGeom_pmom
 
 end module VLIDORT_BRDF_MODIS
