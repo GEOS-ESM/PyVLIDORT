@@ -655,7 +655,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     real*8, target,   intent(in)  :: depol(nch)       ! rayleigh depolarization ratio used in phase matrix
 
 !                                                   ! --- Trace Gas Absorption ---
-    real*8, target,   intent(in)  :: alpha(km,nobs,nch) ! trace gas absoprtion optical thickness
+    real*8, target,   intent(in)  :: alpha(km,nch,nobs) ! trace gas absoprtion optical thickness
 
 
   !                                                   ! --- Aerosol Optical Properties ---
@@ -690,7 +690,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     real*8, target,   intent(in)  :: relat_azymuth(nobs) 
     real*8, target,   intent(in)  :: sensor_zenith(nobs) 
 
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)    
+    real*8,           intent(in)  :: flux_factor(nch) ! solar flux (F0)    
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
@@ -739,7 +739,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
       ! ------------------
       do i = 1, nch
         ! set solar flux
-        SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i,j)
+        SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i)
  
         ! Make sure kernel weights and parameters are defined
         do n = 1, nkernel
@@ -771,7 +771,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
         SCAT%wavelength = channels(i)
         SCAT%rot => ROT(:,j,i)
         SCAT%depol_ratio => depol(i)
-        SCAT%alpha => alpha(:,j,i)
+        SCAT%alpha => alpha(:,i,j)
         SCAT%tau => tau(:,i,j)
         SCAT%ssa => ssa(:,i,j)
         SCAT%g => g(:,i,j)
@@ -859,7 +859,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     real*8, target,   intent(in)            :: depol(nch)       ! rayleigh depolarization ratio used in phase matrix
 
 !                                                   ! --- Trace Gas Absorption ---
-    real*8, target,   intent(in)  :: alpha(km,nobs,nch) ! trace gas absoprtion optical thickness
+    real*8, target,   intent(in)            :: alpha(km,nch,nobs) ! trace gas absoprtion optical thickness
 
   !                                                   ! --- Aerosol Optical Properties ---
     real*8, target,   intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
@@ -888,7 +888,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     real*8, target,   intent(in)            :: relat_azymuth(nobs) 
     real*8, target,   intent(in)            :: sensor_zenith(nobs) 
 
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
@@ -960,7 +960,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
 
       do i = 1, nch
         ! set solar flux
-        SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i,j)
+        SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i)
 
         ! Make sure kernel weights and parameters are defined
         do n = 1, nkernel
@@ -992,7 +992,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
         SCAT%wavelength = channels(i) 
         SCAT%rot => rot(:,j,i)  
         SCAT%depol_ratio => depol(i)    
-        SCAT%alpha => alpha(:,j,i) 
+        SCAT%alpha => alpha(:,i,j) 
         SCAT%tau => tau(:,i,j)
         SCAT%ssa => ssa(:,i,j)
         SCAT%pmom => pmom(:,i,j,:,:)
@@ -1090,7 +1090,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     real*8, target,   intent(in)            :: depol(nch)       ! rayleigh depolarization ratio used in phase matrix
 
 !                                                   ! --- Trace Gas Absorption ---
-    real*8, target,   intent(in)  :: alpha(km,nobs,nch) ! trace gas absoprtion optical thickness
+    real*8, target,   intent(in)            :: alpha(km,nch,nobs) ! trace gas absoprtion optical thickness
 
   !                                                   ! --- Aerosol Optical Properties ---
     real*8, target,   intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
@@ -1119,7 +1119,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
     real*8, target,   intent(in)            :: relat_azymuth(nobs,ngeom) 
     real*8, target,   intent(in)            :: sensor_zenith(nobs,ngeom) 
 
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
@@ -1195,7 +1195,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
 
       do i = 1, nch
         ! set solar flux
-        SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i,j)
+        SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i)
       
         ! Make sure kernel weights and parameters are defined
         do n = 1, nkernel
@@ -1227,7 +1227,7 @@ subroutine VLIDORT_Scalar_LandMODIS_Cloud (km, nch, nobs,channels, nstreams, pla
         SCAT%wavelength = channels(i) 
         SCAT%rot => rot(:,j,i)  
         SCAT%depol_ratio => depol(i)    
-        SCAT%alpha => alpha(:,j,i) 
+        SCAT%alpha => alpha(:,i,j) 
         SCAT%tau => tau(:,i,j)
         SCAT%ssa => ssa(:,i,j)
         SCAT%pmom => pmom(:,i,j,:,:)
