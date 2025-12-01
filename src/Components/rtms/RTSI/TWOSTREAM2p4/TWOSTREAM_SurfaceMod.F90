@@ -30,10 +30,10 @@ module TWOSTREAM_SurfaceMod
                                   sensor_zenith, relative_azimuth)
 
          type(TWOSTREAM_Surface),intent(inout)  :: self
-         real*8,  intent(in)  :: albedo
-         real*8,  intent(in)  :: solar_zenith(:)
-         real*8,  intent(in)  :: sensor_zenith(:)
-         real*8,  intent(in)  :: relative_azimuth(:)
+         real*8,target,  intent(in)  :: albedo
+         real*8,target,  intent(in)  :: solar_zenith(:)
+         real*8,target,  intent(in)  :: sensor_zenith(:)
+         real*8,target,  intent(in)  :: relative_azimuth(:)
 
 
          self%sfc_type      = 1
@@ -54,9 +54,9 @@ module TWOSTREAM_SurfaceMod
 
       implicit NONE
       type(TWOSTREAM_Surface), intent(inout)   :: self
-      real*8, intent(in)                    :: solar_zenith(:)
-      real*8, intent(in)                    :: sensor_zenith(:)
-      real*8, intent(in)                    :: relative_azimuth(:)
+      real*8,target, intent(in)                    :: solar_zenith(:)
+      real*8,target, intent(in)                    :: sensor_zenith(:)
+      real*8,target, intent(in)                    :: relative_azimuth(:)
       real*8, intent(in)                    :: fiso
       real*8, intent(in)                    :: fgeo
       real*8, intent(in)                    :: fvol
