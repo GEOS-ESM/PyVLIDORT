@@ -1,6 +1,8 @@
       module VLIDORT_AOPMod
  
       USE VLIDORT_PARS_m
+      USE vfzmat_Rayleigh_m
+      USE vfzmat_Master_m
       
       USE VLIDORT_IO_DEFS_m
       
@@ -219,6 +221,8 @@
 !     apropriate values.
 !
       USE VLIDORT_PARS_m
+      USE vfzmat_Rayleigh_m
+      USE vfzmat_Master_m
          
       type(VLIDORT_scat),    intent(inout)  :: self        ! Contains most input and container for combined AOPs
       integer,               intent(out)    :: rc
@@ -321,7 +325,8 @@
       Exist_InFmatrices = .false.
       Exist_InFmatrices(1:NLAYERS) = .true.
       do_ObsGeoms = self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_OBSERVATION_GEOMETRY   ! set in Mod, must be true
-      OBSGEOMS(1:self%Surface%Base%N_USER_OBSGEOMS,:) = self%Surface%Base%VIO%VLIDORT_ModIn%MUserVal%TS_USER_OBSGEOMS_INPUT
+      OBSGEOMS = 0.0 ! initialize for safety
+      OBSGEOMS(1:self%Surface%Base%N_USER_OBSGEOMS,:) = self%Surface%Base%VIO%VLIDORT_ModIn%MUserVal%TS_USER_OBSGEOMS_INPUT(1:self%Surface%Base%N_USER_OBSGEOMS,:)
 
 !                Populate Scattering Phase Matrix
 !                ---------------------------------
