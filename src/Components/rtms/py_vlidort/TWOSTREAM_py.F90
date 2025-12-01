@@ -7,7 +7,7 @@
 !.............................................................................
 
 
-subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,nparam, &
+subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, nkernel,nparam, &
                      ROT, depol, alpha, tau, ssa, g, pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
@@ -20,6 +20,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,
     integer,          intent(in)            :: km    ! number of vertical levels 
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
@@ -48,9 +49,9 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,
                                                                               ! param1 = crown relative height (h/b)
                                                                               ! param2 = shape parameter (b/r)
                          
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)  
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom) 
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom) 
 
     real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
 
@@ -61,7 +62,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,
     real*8,           intent(out)           :: reflectance_TS_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    call TWOSTREAM_BRDF_LandMODIS (km, nch, nobs, channels, plane_parallel, &
+    call TWOSTREAM_BRDF_LandMODIS (km, nch, nobs, ngeom, channels, plane_parallel, &
                                    ROT, depol, alpha, tau, ssa, g, pe, he, te, &
                                    kernel_wt, param, &
                                    solar_zenith, &
@@ -76,7 +77,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, channels, plane_parallel, nkernel,
 
 end subroutine TWOSTREAM_BRDF_RTLS
 
-subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, channels, plane_parallel, &
+subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parallel, &
                      ROT, depol, alpha, tau, ssa, g, pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
@@ -89,6 +90,7 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, channels, plane_parallel, &
     integer,          intent(in)            :: km    ! number of vertical levels 
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
@@ -111,20 +113,20 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, channels, plane_parallel, &
 
     real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
                          
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)  
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom) 
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom) 
 
     real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_TS_SURF(nobs,nch)     ! TOA normalized radiance from TWOSTREAM using surface module
-    real*8,           intent(out)           :: reflectance_TS_SURF(nobs, nch) ! TOA reflectance from TWOSTREAM using surface module
+    real*8,           intent(out)           :: radiance_TS_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from TWOSTREAM using surface module
+    real*8,           intent(out)           :: reflectance_TS_SURF(nobs, nch,ngeom) ! TOA reflectance from TWOSTREAM using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    call TWOSTREAM_Lambert_Surface (km, nch, nobs, channels, plane_parallel, &
+    call TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_parallel, &
                                    ROT, depol, alpha, tau, ssa, g, pe, he, te, &
                                    albedo, &
                                    solar_zenith, &
