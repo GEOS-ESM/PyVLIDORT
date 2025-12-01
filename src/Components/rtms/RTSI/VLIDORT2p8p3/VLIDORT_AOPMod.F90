@@ -38,7 +38,6 @@
          real*8, pointer :: alpha(:)            ! trace gas absorption optical thickness
          real*8, pointer :: tau(:)              ! aerosol tau
          real*8, pointer :: ssa(:)              ! aerosol ssa
-         real*8, pointer ::   g(:)              ! aerosol asymmetry factor
          real*8, pointer ::  pe(:)              ! pressure    at layer edges [Pa]
          real*8, pointer ::  ze(:)              ! height      at layer edges [m]
          real*8, pointer ::  te(:)              ! temperature at layer edges [K]
@@ -46,12 +45,10 @@
          real*8, pointer :: fmatrix(:,:,:)      ! scattering phase matrix
          real*8, pointer :: tauI(:)             ! ice cloud tau
          real*8, pointer :: ssaI(:)             ! ice cloud ssa
-         real*8, pointer ::   gI(:)             ! ice cloud asymmetry factor
          real*8, pointer :: pmomI(:,:,:)        ! ice cloud moments of the scattering phase matrix
          real*8, pointer :: fmatrixI(:,:,:)     ! ice cloud scattering phase matrix
          real*8, pointer :: tauL(:)             ! liquid cloud tau
          real*8, pointer :: ssaL(:)             ! liquid cloud ssa
-         real*8, pointer ::   gL(:)             ! liquid cloud asymmetry factor
          real*8, pointer :: pmomL(:,:,:)        ! liquid cloud moments of the scattering phase matrix
          real*8, pointer :: fmatrixL(:,:,:)     ! liquid cloud scattering phase matrix
 
