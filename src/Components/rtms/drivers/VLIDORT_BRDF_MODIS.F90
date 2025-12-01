@@ -290,7 +290,7 @@ module VLIDORT_BRDF_MODIS
 
   !..........................................................................
   subroutine VLIDORT_LandMODIS_pmatrix (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng,  &
-                     nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+                     nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc, &
