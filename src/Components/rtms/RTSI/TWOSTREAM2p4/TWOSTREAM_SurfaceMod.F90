@@ -16,11 +16,11 @@ module TWOSTREAM_SurfaceMod
 
       type(TWOSTREAM)               :: Base
       integer                       :: sfc_type = -1
-      real*8                        :: albedo
+      real*8,pointer                :: albedo
 
-      real*8                        :: solar_zenith
-      real*8                        :: relat_azimuth
-      real*8                        :: sensor_zenith
+      real*8,pointer                :: solar_zenith(:)
+      real*8,pointer                :: relat_azimuth(:)
+      real*8,pointer                :: sensor_zenith(:)
 
    END TYPE TWOSTREAM_Surface
 
@@ -31,16 +31,16 @@ module TWOSTREAM_SurfaceMod
 
          type(TWOSTREAM_Surface),intent(inout)  :: self
          real*8,  intent(in)  :: albedo
-         real*8,  intent(in)  :: solar_zenith
-         real*8,  intent(in)  :: sensor_zenith
-         real*8,  intent(in)  :: relative_azimuth
+         real*8,  intent(in)  :: solar_zenith(:)
+         real*8,  intent(in)  :: sensor_zenith(:)
+         real*8,  intent(in)  :: relative_azimuth(:)
 
 
          self%sfc_type      = 1
-         self%albedo        = albedo
-         self%solar_zenith  = solar_zenith
-         self%sensor_zenith = sensor_zenith
-         self%relat_azimuth = relative_azimuth
+         self%albedo        => albedo
+         self%solar_zenith  => solar_zenith
+         self%sensor_zenith => sensor_zenith
+         self%relat_azimuth => relative_azimuth
 
    end subroutine TWOSTREAM_SurfaceLamb
 
@@ -54,9 +54,9 @@ module TWOSTREAM_SurfaceMod
 
       implicit NONE
       type(TWOSTREAM_Surface), intent(inout)   :: self
-      real*8, intent(in)                    :: solar_zenith
-      real*8, intent(in)                    :: sensor_zenith
-      real*8, intent(in)                    :: relative_azimuth
+      real*8, intent(in)                    :: solar_zenith(:)
+      real*8, intent(in)                    :: sensor_zenith(:)
+      real*8, intent(in)                    :: relative_azimuth(:)
       real*8, intent(in)                    :: fiso
       real*8, intent(in)                    :: fgeo
       real*8, intent(in)                    :: fvol
@@ -90,20 +90,20 @@ module TWOSTREAM_SurfaceMod
       rc = 0
 
       self%sfc_type      = 3
-      self%solar_zenith  = solar_zenith
-      self%sensor_zenith = sensor_zenith
-      self%relat_azimuth = relative_azimuth
+      self%solar_zenith  => solar_zenith
+      self%sensor_zenith => sensor_zenith
+      self%relat_azimuth => relative_azimuth
 
       USER_OBSGEOMS = 0.0
-      USER_OBSGEOMS(1,1) = solar_zenith
-      USER_OBSGEOMS(1,2) = sensor_zenith
-      USER_OBSGEOMS(1,3) = relative_azimuth
+      USER_OBSGEOMS(1:self%Base%N_USER_OBSGEOMS,1) = solar_zenith
+      USER_OBSGEOMS(1:self%Base%N_USER_OBSGEOMS,2) = sensor_zenith
+      USER_OBSGEOMS(1:self%Base%N_USER_OBSGEOMS,3) = relative_azimuth
       BEAM_SZAS = 0.0
-      BEAM_SZAS(1) = solar_zenith
+      BEAM_SZAS(1:self%Base%NBEAMS) = solar_zenith
       USER_ANGLES = 0.0
-      USER_ANGLES(1) = sensor_zenith
+      USER_ANGLES(1:self%Base%N_USER_STREAMS) = sensor_zenith
       USER_RELAZMS = 0.0
-      USER_RELAZMS(1) = relative_azimuth
+      USER_RELAZMS(1:self%Base%N_USER_RELAZMS) = relative_azimuth
 
 
 
