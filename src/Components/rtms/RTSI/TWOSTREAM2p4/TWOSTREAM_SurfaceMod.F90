@@ -101,7 +101,7 @@ module TWOSTREAM_SurfaceMod
       BEAM_SZAS = 0.0
       BEAM_SZAS(1:self%Base%NBEAMS) = solar_zenith
       USER_ANGLES = 0.0
-      USER_ANGLES(1:self%Base%N_USER_STREAMS) = sensor_zenith
+      USER_ANGLES(1:self%Base%N_USER_ANGLES) = sensor_zenith
       USER_RELAZMS = 0.0
       USER_RELAZMS(1:self%Base%N_USER_RELAZMS) = relative_azimuth
 
