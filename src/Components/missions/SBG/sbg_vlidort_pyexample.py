@@ -22,7 +22,7 @@ import yaml
 from inputs_vlidort import INPUTS_VLIDORT
 
 
-from py_vlidort.vlidort import MODIS_BRDF_run
+from py_vlidort.vlidort import MODIS_BRDF_CLOUD_run
 from py_vlidort.twostream import MODIS_BRDF_run as ts_MODIS_BRDF_run
 from multiprocessing import Pool
 
@@ -369,7 +369,26 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         sza = self.SZA[iobs].astype('float64')
         raa = self.RAA[iobs].astype('float64')
 
-        return rot,depol_ratio,tau,ssa,g,pmatrix,pe,te,ze,param,kernel_wt,vza,sza,raa
+        # cloud properties
+        # empty for now
+        dims = tau.shape
+        tauI, tauL = np.zeros(dims).astype('float64'), np.zeros(dims).astype('float64')
+        ssaI, ssaL = np.zeros(dims).astype('float64'), np.zeros(dims).astype('float64')
+        gI, gL     = np.zeros(dims).astype('float64'), np.zeros(dims).astype('float64')
+        dims = pmatrix.shape
+        pmatrixI, pmatrixL = np.zeros(dims).astype('float64'), np.zeros(dims).astype('float64')
+
+        # trace gas absorption
+        # empty for now
+        dims = tau.shape
+        alpha = np.zeros(dims).astype('float64')
+
+        # solar flux (f0)
+        # constant for now
+        flux_factor = np.ones([1]).astype('float64')
+
+        args = rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor
+        return args
 
     #---
     def runTWOSTREAM(self,p,ich):
@@ -392,12 +411,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             npts = eob - sob
 
             # Subset inputs for batch
-            rot,depol_ratio,tau,ssa,g,pmatrix,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
-
-            # trace gas absorption
-            # empty for now
-            alpha = np.zeros([self.nlev,1,npts]).astype('float64')
-
+            rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = self.getargs(ich,sob,eob,iobs,npts)
             # solar flux
             # ones for now
             flux_factor = np.ones([1,npts])
@@ -458,19 +472,23 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             npts = eob - sob
 
             # Subset inputs for batch
-            rot,depol_ratio,tau,ssa,g,pmatrix,pe,te,ze,param,kernel_wt,vza,sza,raa = self.getargs(ich,sob,eob,iobs,npts)
+            rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = self.getargs(ich,sob,eob,iobs,npts)
            
             # create list of input arguments
-            args = [(channel, self.nstreams, self.plane_parallel, rot[:,i:i+1,:], depol_ratio, 
+            args = [(channel, self.nstreams, self.plane_parallel, 
+                    rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
                     tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
+                    tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
+                    tauL[:,:,i:i+1], ssaL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
                     pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
                     kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
                     sza[i:i+1], raa[i:i+1], vza[i:i+1],
+                    flux_factor,
                     MISSING,
                     self.verbose) for i in range(npts)]
 
             # run vlidort distributed across processors
-            result = p.map(MODIS_BRDF_run,args)
+            result = p.map(MODIS_BRDF_CLOUD_run,args)
 
             # initialize temporary outputs
             I = []
