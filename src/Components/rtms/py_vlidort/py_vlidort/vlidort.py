@@ -18,9 +18,9 @@ MISSING = -1.e+20
 ncALIAS = {'LONGITUDE': 'trjLon',
            'LATITUDE': 'trjLat'}
 
-WrapperFuncs = {'MODIS_BRDF_PMATRIX'  : VLIDORT_POLAR_.vector_brdf_modis_pmatrix,
+WrapperFuncs = {'MODIS_BRDF_PMATRIX'  : VLIDORT_POLAR_.brdf_modis_pmatrix,
                 'ROT_CALC'            : VLIDORT_POLAR_.rot_calc,
-                'MODIS_BRDF_PMOM'     : VLIDORT_POLAR_.vector_brdf_modis_pmom}
+                'MODIS_BRDF_PMOM'     : VLIDORT_POLAR_.brdf_modis_pmom}
 #                'MODIS_BRDF_BPDF': VLIDORT_POLAR_.vector_brdf_modis_bpdf,
 #                'LAMBERTIAN'     : VLIDORT_POLAR_.vector_lambert,
 #                'LAMBERTIAN_CLOUD'     : VLIDORT_POLAR_.vector_lambert_cloud,
@@ -69,14 +69,14 @@ def LAMBERTIAN_CLOUD_run(args):
 def MODIS_BRDF_PMOM_run(args):
 
     # Call VLIDORT wrapper function
-    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.vector_brdf_modis_pmom(*args)
+    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.brdf_modis_pmom(*args)
 
     return I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U
 #---
 def MODIS_BRDF_PMATRIX_run(args):
 
     # Call VLIDORT wrapper function
-    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.vector_brdf_modis_pmatrix(*args)
+    I, reflectance, surf_reflectance, Q, U, BR_Q, BR_U, rc = VLIDORT_POLAR_.brdf_modis_pmatrix(*args)
 
     return I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U
 
