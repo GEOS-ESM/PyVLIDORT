@@ -401,6 +401,7 @@ module VLIDORT_BRDF_MODIS
 
     SCAT%N_InAngles    = nAng
     SCAT%InAngles => InAngles
+    SCAT%nMom    = SCAT%Surface%Base%NGREEK_MOMENTS_INPUT  ! using the default value
     SCAT%nPol    = nPol
     if (present(DO_2OS_CORRECTION)) then
       SCAT%DO_2OS_CORRECTION = DO_2OS_CORRECTION
