@@ -86,7 +86,7 @@ module TWOSTREAM_BRDF_MODIS
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
     SCAT%Surface%Base%NBEAMS            = ngeom
-    SCAT%Surface%Base%N_USER_STREAMS    = ngeom
+    SCAT%Surface%Base%N_USER_ANGLES     = ngeom
     SCAT%Surface%Base%N_USER_RELAZMS    = ngeom
     call TWOSTREAM_Init( SCAT%Surface%Base, km, rc)
     if ( rc /= 0 ) return
@@ -95,9 +95,9 @@ module TWOSTREAM_BRDF_MODIS
 
        ! Make sure albedo and angles are available
        ! -----------------------------------------
-      if ( IS_MISSING(solar_zenith(j),MISSING)  .OR. & 
-           IS_MISSING(sensor_zenith(j),MISSING) .OR. &
-           IS_MISSING(relat_azymuth(j),MISSING)  )  then
+      if ( IS_MISSING(solar_zenith(j,1),MISSING)  .OR. & 
+           IS_MISSING(sensor_zenith(j,1),MISSING) .OR. &
+           IS_MISSING(relat_azymuth(j,1),MISSING)  )  then
 
         radiance_L_SURF(j,:,:) = MISSING
         reflectance_L_SURF(j,:,:) = MISSING
@@ -154,7 +154,7 @@ module TWOSTREAM_BRDF_MODIS
         reflectance_L_SURF(j,i,:) = output%reflectance
 
         if ( verbose > 0 ) then
-          print *, 'My radiance land modis',radiance_L_SURF(j,i), reflectance_L_SURF(j,i) 
+          print *, 'My radiance land modis',radiance_L_SURF(j,i,:), reflectance_L_SURF(j,i,:) 
         end if
 
         if ( ier /= 0 ) then

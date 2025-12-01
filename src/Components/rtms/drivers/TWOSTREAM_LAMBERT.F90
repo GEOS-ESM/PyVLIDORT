@@ -74,7 +74,7 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
   SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
   SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
   SCAT%Surface%Base%NBEAMS            = ngeom
-  SCAT%Surface%Base%N_USER_STREAMS    = ngeom
+  SCAT%Surface%Base%N_USER_ANGLES     = ngeom
   SCAT%Surface%Base%N_USER_RELAZMS    = ngeom
   call TWOSTREAM_Init( SCAT%Surface%Base, km, rc)
   if ( rc /= 0 ) then
@@ -86,9 +86,9 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
 
      ! Make sure albedo and angles are available
      ! -----------------------------------------
-     if ( IS_MISSING(solar_zenith(j))  .OR. & 
-          IS_MISSING(sensor_zenith(j)) .OR. &
-          IS_MISSING(relat_azymuth(j))  )  then
+     if ( IS_MISSING(solar_zenith(j,1))  .OR. & 
+          IS_MISSING(sensor_zenith(j,1)) .OR. &
+          IS_MISSING(relat_azymuth(j,1))  )  then
 
         radiance_L(j,:,:) = MISSING
         reflectance_L(j,:,:) = MISSING
