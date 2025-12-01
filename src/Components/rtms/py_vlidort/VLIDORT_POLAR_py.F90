@@ -41,13 +41,13 @@ subroutine ROT_CALC(km, nch, nobs, channels, pe, he, te, &
 end subroutine ROT_CALC
 
 
-subroutine VECTOR_BRDF_MODIS_PMATRIX(km, nch, nobs, channels, nstreams, plane_parallel, nAng, nPol,nkernel,nparam, &
-                     ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
+subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng, nPol, NSTOKES, nkernel,nparam, &
+                     InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
 
-    use VLIDORT_BRDF_MODIS, only: VLIDORT_Vector_LandMODIS_pmatrix
+    use VLIDORT_BRDF_MODIS, only: VLIDORT_LandMODIS_pmatrix
     implicit None
 
   ! !INPUT PARAMETERS:
@@ -55,17 +55,20 @@ subroutine VECTOR_BRDF_MODIS_PMATRIX(km, nch, nobs, channels, nstreams, plane_pa
     integer,          intent(in)            :: km    ! number of vertical levels
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
     integer,          intent(in)            :: nAng  ! number of phase function angles
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
     integer,          intent(in)            :: nstreams  ! number of half space streams
+    integer,          intent(in)            :: NSTOKES   ! number of stokes vectors. 1 =scalar 3 or 4 =vector
 
     integer,          intent(in)            :: nkernel ! number of kernels
     integer,          intent(in)            :: nparam  ! number of kernel parameters
 
     real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+    real*8,           intent(in)            :: InAngles(nAng)   ! phase matrix angles
 
   !                                                   ! --- Rayleigh Parameters ---
     real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
@@ -100,27 +103,27 @@ subroutine VECTOR_BRDF_MODIS_PMATRIX(km, nch, nobs, channels, nstreams, plane_pa
                                                                               ! param1 = crown relative height (h/b)
                                                                               ! param2 = shape parameter (b/r)
 
-    real*8,           intent(in)            :: solar_zenith(nobs)
-    real*8,           intent(in)            :: relat_azymuth(nobs)
-    real*8,           intent(in)            :: sensor_zenith(nobs)
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom)
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom)
 
-    real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch, ngeom) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U
+    real*8,           intent(out)           :: BR(nobs,nch, ngeom)                   ! bidirectional reflectance
+    real*8,           intent(out)           :: Q(nobs, nch, ngeom)                   ! Stokes parameter Q
+    real*8,           intent(out)           :: U(nobs, nch, ngeom)                   ! Stokes parameter U
+    real*8,           intent(out)           :: BR_Q(nobs, nch, ngeom)                ! Stokes parameter Q
+    real*8,           intent(out)           :: BR_U(nobs, nch, ngeom)                ! Stokes parameter U
 
 
-    call VLIDORT_Vector_LandMODIS_pmatrix (km, nch, nobs, channels, nstreams, plane_parallel, nAng, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
+    call VLIDORT_LandMODIS_pmatrix (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng, &
+                                   nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                                    pe, he, te, &
                                    kernel_wt, param, &
                                    solar_zenith, &
@@ -133,16 +136,16 @@ subroutine VECTOR_BRDF_MODIS_PMATRIX(km, nch, nobs, channels, nstreams, plane_pa
                                    BR, Q, U, BR_Q, BR_U, rc )
 
 
-end subroutine VECTOR_BRDF_MODIS_PMATRIX
+end subroutine BRDF_MODIS_PMATRIX
 
 
-subroutine VECTOR_BRDF_MODIS_PMOM(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nkernel,nparam, &
+subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, nPol, NSTOKES, nkernel,nparam, &
                      ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
 
-    use VLIDORT_BRDF_MODIS, only: VLIDORT_Vector_LandMODIS_pmom
+    use VLIDORT_BRDF_MODIS, only: VLIDORT_LandMODIS_pmom
     implicit None
 
   ! !INPUT PARAMETERS:
@@ -150,12 +153,14 @@ subroutine VECTOR_BRDF_MODIS_PMOM(km, nch, nobs, channels, nstreams, plane_paral
     integer,          intent(in)            :: km    ! number of vertical levels
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
     integer,          intent(in)            :: nMom  ! number of phase function moments
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
     integer,          intent(in)            :: nstreams  ! number of half space streams
+    integer,          intent(in)            :: NSTOKES   ! number of stokes vectors. 1 =scalar 3 or 4 =vector
 
     integer,          intent(in)            :: nkernel ! number of kernels
     integer,          intent(in)            :: nparam  ! number of kernel parameters
@@ -195,27 +200,27 @@ subroutine VECTOR_BRDF_MODIS_PMOM(km, nch, nobs, channels, nstreams, plane_paral
                                                                               ! param1 = crown relative height (h/b)
                                                                               ! param2 = shape parameter (b/r)
 
-    real*8,           intent(in)            :: solar_zenith(nobs)
-    real*8,           intent(in)            :: relat_azymuth(nobs)
-    real*8,           intent(in)            :: sensor_zenith(nobs)
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom)
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom)
 
     real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch,ngeom) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U
+    real*8,           intent(out)           :: BR(nobs,nch,ngeom)                   ! bidirectional reflectance
+    real*8,           intent(out)           :: Q(nobs, nch,ngeom)                   ! Stokes parameter Q
+    real*8,           intent(out)           :: U(nobs, nch,ngeom)                   ! Stokes parameter U
+    real*8,           intent(out)           :: BR_Q(nobs, nch,ngeom)                ! Stokes parameter Q
+    real*8,           intent(out)           :: BR_U(nobs, nch,ngeom)                ! Stokes parameter U
 
 
-    call VLIDORT_Vector_LandMODIS_pmom (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+    call VLIDORT_LandMODIS_pmom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, &
+                                   nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                                    pe, he, te, &
                                    kernel_wt, param, &
                                    solar_zenith, &
@@ -228,7 +233,7 @@ subroutine VECTOR_BRDF_MODIS_PMOM(km, nch, nobs, channels, nstreams, plane_paral
                                    BR, Q, U, BR_Q, BR_U, rc )
 
 
-end subroutine VECTOR_BRDF_MODIS_PMOM
+end subroutine BRDF_MODIS_PMOM
 
 
 !subroutine VECTOR_BRDF_MODIS_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nkernel,nparam,nparam_bpdf, &
