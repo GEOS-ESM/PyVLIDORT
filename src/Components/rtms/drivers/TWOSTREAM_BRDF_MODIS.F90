@@ -17,7 +17,7 @@ module TWOSTREAM_BRDF_MODIS
     return
   end function IS_MISSING
 
-  subroutine TWOSTREAM_BRDF_LandMODIS (km, nch, nobs,channels, plane_parallel,       &
+  subroutine TWOSTREAM_BRDF_LandMODIS (km, nch, nobs, ngeom, channels, plane_parallel,       &
                      ROT, depol_ratio, alpha, tau, ssa, g, pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose,radiance_L_SURF,reflectance_L_SURF, rc )
@@ -29,13 +29,13 @@ module TWOSTREAM_BRDF_MODIS
 
     implicit NONE
 
-    logical,parameter             :: aerosol = .true.   ! whether or not simulation contains aerosol
     integer, parameter            :: nkernel = 3
     integer, parameter            :: nparam  = 2
   ! !INPUT PARAMETERS:
     integer,          intent(in)  :: km    ! number of vertical levels
     integer,          intent(in)  :: nch   ! number of channels
     integer,          intent(in)  :: nobs  ! number of observations
+    integer,          intent(in)  :: ngeom  ! number of geometries
 
     logical,          intent(in)  :: plane_parallel ! do plane parallel flag
                                         
@@ -60,18 +60,18 @@ module TWOSTREAM_BRDF_MODIS
                                                                    ! param2 = shape parameter (b/r)
     
     real*8, target,   intent(in)  :: MISSING          ! MISSING VALUE                                      
-    real*8, target,   intent(in)  :: solar_zenith(nobs)  
-    real*8, target,   intent(in)  :: relat_azymuth(nobs) 
-    real*8, target,   intent(in)  :: sensor_zenith(nobs) 
+    real*8, target,   intent(in)  :: solar_zenith(nobs,ngeom)  
+    real*8, target,   intent(in)  :: relat_azymuth(nobs,ngeom) 
+    real*8, target,   intent(in)  :: sensor_zenith(nobs,ngeom) 
 
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)  :: flux_factor(nch) ! solar flux (F0)
     
-    integer,          intent(in)            :: verbose
+    integer,          intent(in)  :: verbose
 
   ! !OUTPUT PARAMETERS:
 
-    real*8,           intent(out) :: radiance_L_SURF(nobs,nch)       ! TOA normalized radiance from LIDORT using surface module
-    real*8,           intent(out) :: reflectance_L_SURF(nobs, nch)   ! TOA reflectance from LIDORT using surface module
+    real*8,           intent(out) :: radiance_L_SURF(nobs,nch,ngeom)       ! TOA normalized radiance from LIDORT using surface module
+    real*8,           intent(out) :: reflectance_L_SURF(nobs,nch,ngeom)   ! TOA reflectance from LIDORT using surface module
     integer,          intent(out) :: rc                               ! return code
 
     integer             :: i,j,n,p,ier
@@ -84,6 +84,10 @@ module TWOSTREAM_BRDF_MODIS
     ier = 0
 
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+    SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
+    SCAT%Surface%Base%NBEAMS            = ngeom
+    SCAT%Surface%Base%N_USER_STREAMS    = ngeom
+    SCAT%Surface%Base%N_USER_RELAZMS    = ngeom
     call TWOSTREAM_Init( SCAT%Surface%Base, km, rc)
     if ( rc /= 0 ) return
 
@@ -95,8 +99,8 @@ module TWOSTREAM_BRDF_MODIS
            IS_MISSING(sensor_zenith(j),MISSING) .OR. &
            IS_MISSING(relat_azymuth(j),MISSING)  )  then
 
-        radiance_L_SURF(j,:) = MISSING
-        reflectance_L_SURF(j,:) = MISSING
+        radiance_L_SURF(j,:,:) = MISSING
+        reflectance_L_SURF(j,:,:) = MISSING
         cycle
       end if
         
@@ -108,20 +112,20 @@ module TWOSTREAM_BRDF_MODIS
       ! ------------------
       do i = 1, nch
         ! set solar flux
-        SCAT%Surface%Base%TSIO%FLUX_FACTOR = flux_factor(i,j)
+        SCAT%Surface%Base%TSIO%FLUX_FACTOR = flux_factor(i)
  
         ! Make sure kernel weights and parameters are defined
         do n = 1, nkernel
           if (IS_MISSING(kernel_wt(n,i,j),MISSING)) then
-            radiance_L_SURF(j,i) = MISSING
-            reflectance_L_SURF(j,i) = MISSING
+            radiance_L_SURF(j,i,:) = MISSING
+            reflectance_L_SURF(j,i,:) = MISSING
             cycle
           end if
         end do
         do p = 1, nparam
           if (IS_MISSING(param(p,i,j),MISSING)) then
-            radiance_L_SURF(j,i) = MISSING
-            reflectance_L_SURF(j,i) = MISSING
+            radiance_L_SURF(j,i,:) = MISSING
+            reflectance_L_SURF(j,i,:) = MISSING
             cycle
           end if
         end do
@@ -129,8 +133,8 @@ module TWOSTREAM_BRDF_MODIS
         if ( verbose > 0 ) then
           print*, 'DO MODIS BRDF'
         end if
-        call TWOSTREAM_LANDMODIS(SCAT%Surface,solar_zenith(j),&
-                               sensor_zenith(j),relat_azymuth(j),&
+        call TWOSTREAM_LANDMODIS(SCAT%Surface,solar_zenith(j,:),&
+                               sensor_zenith(j,:),relat_azymuth(j,:),&
                                kernel_wt(1,i,j),kernel_wt(2,i,j),kernel_wt(3,i,j),&
                                reshape(param(:,i,j),(/nparam/)),rc)
 
@@ -146,16 +150,16 @@ module TWOSTREAM_BRDF_MODIS
          
         call TWOSTREAM_Run (SCAT, output, ier)
 
-        radiance_L_SURF(j,i)    = output%radiance
-        reflectance_L_SURF(j,i) = output%reflectance
+        radiance_L_SURF(j,i,:)    = output%radiance
+        reflectance_L_SURF(j,i,:) = output%reflectance
 
         if ( verbose > 0 ) then
           print *, 'My radiance land modis',radiance_L_SURF(j,i), reflectance_L_SURF(j,i) 
         end if
 
         if ( ier /= 0 ) then
-          radiance_L_SURF(j,i) = MISSING
-          reflectance_L_SURF(j,i) = MISSING
+          radiance_L_SURF(j,i,:) = MISSING
+          reflectance_L_SURF(j,i,:) = MISSING
           cycle
         end if
 
