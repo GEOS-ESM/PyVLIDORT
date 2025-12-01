@@ -141,7 +141,6 @@ module VLIDORT_LAMBERT
           SCAT%depol_ratio => depol(i)
           SCAT%tau => tau(:,i,j)
           SCAT%ssa => ssa(:,i,j)
-          SCAT%g => g(:,i,j)
           SCAT%pmom => pmom(:,i,j,:,:)
 
           call VLIDORT_Run (SCAT, output, ier)
@@ -649,15 +648,12 @@ module VLIDORT_LAMBERT
           SCAT%alpha => alpha(:,j,i)
           SCAT%tau => tau(:,i,j)
           SCAT%ssa => ssa(:,i,j)
-          SCAT%g => g(:,i,j)
           SCAT%pmom => pmom(:,i,j,:,:)
           SCAT%tauI => tauI(:,i,j)
           SCAT%ssaI => ssaI(:,i,j)
-          SCAT%gI => gI(:,i,j)
           SCAT%pmomI => pmomI(:,i,j,:,:)
           SCAT%tauL => tauL(:,i,j)
           SCAT%ssaL => ssaL(:,i,j)
-          SCAT%gL => gL(:,i,j)
           SCAT%pmomL => pmomL(:,i,j,:,:)
 
           call VLIDORT_Run (SCAT, output, ier)
