@@ -8,6 +8,9 @@
       USE VLIDORT_AUX_m
       USE VLIDORT_INPUTS_m
       USE VLIDORT_MASTERS_m
+      USE vfzmat_Rayleigh_m
+      USE vfzmat_Master_m
+
 
       USE VLIDORT_Mod
       USE VLIDORT_SurfaceMod
