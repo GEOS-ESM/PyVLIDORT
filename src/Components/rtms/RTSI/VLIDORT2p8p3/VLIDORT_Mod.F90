@@ -173,9 +173,19 @@
 
       DO_FULLRAD_MODE    = .true.  ! Do full Stokes vector calculation?  If false, and DO_FOCORR is true, returns single scatter
       DO_FOCORR_NADIR    = .false. ! Do nadir single scatter correction? only the incoming solar beam is treated in spherical geometry
-      DO_FOCORR_OUTGOING = .true.  ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
-      ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
-      DO_MSSTS           = .false.  ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation
+      if (self%DO_PLANE_PARALLEL) then
+          ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
+          ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
+          DO_FOCORR_OUTGOING = .false.
+          ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation 
+          DO_MSSTS           = .false.  
+      else
+          ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
+          ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
+          DO_FOCORR_OUTGOING = .false.
+          ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation
+          DO_MSSTS           = .false.
+      end if
       DO_FOCORR          = .true.  ! Do First-Order correction?  Must be set tu use exact single scatter instead of the truncated phase function
       DO_FOCORR_EXTERNAL = .false. ! Use First-Order results computed externally
       DO_SSCORR_USEFMAT  = self%USEFMAT ! Use direct F-matrix inputs
@@ -188,7 +198,11 @@
       DO_SOLAR_SOURCES    = .true.     ! Include solar sources?
       DO_PLANE_PARALLEL   = self%DO_PLANE_PARALLEL    ! Plane-parallel treatment of direct beam?
       DO_CHAPMAN_FUNCTION = .true.     ! Perform internal Chapman function calculation?
-      DO_REFRACTIVE_GEOMETRY = .true. ! Beam path with refractive atmosphere?
+      if (self%DO_PLANE_PARALLEL) then
+          DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere?
+      else
+          DO_REFRACTIVE_GEOMETRY = .true. ! Beam path with refractive atmosphere?
+      end if
      
 !                         Performance Control
 !                         -------------------
