@@ -59,6 +59,7 @@ class INPUTS_VLIDORT(G2GAOP):
         self.ssa = aop.SSA.astype('float64').transpose('lev','ch','nobs').to_numpy()
         self.g   = aop.G.astype('float64').transpose('lev','ch','nobs').to_numpy()
         self.pmatrix = aop.PMATRIX.astype('float64').transpose('lev','ch','nobs','ang','p').to_numpy()
+        self.angles = aop.ang
 
 
     #---
