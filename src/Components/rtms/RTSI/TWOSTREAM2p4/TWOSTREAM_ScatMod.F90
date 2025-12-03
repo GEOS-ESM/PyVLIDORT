@@ -31,8 +31,8 @@
       end type TWOSTREAM_scat
 
       type TWOSTREAM_output
-         real*8     :: RADIANCE    ! TOA radiance
-         real*8     :: REFLECTANCE ! TOA reflectance
+         real*8, pointer     :: RADIANCE(:)    ! TOA radiance
+         real*8, pointer     :: REFLECTANCE(:) ! TOA reflectance
       end type TWOSTREAM_output
 
       contains
@@ -163,15 +163,15 @@
       HEIGHT_GRID = 0.0
       HEIGHT_GRID(0:NLAYERS) = self.ze * 1.E-3  !HEIGHT_GRID in km
       USER_OBSGEOMS = 0.0
-      USER_OBSGEOMS(1,1) = self%Surface%solar_zenith
-      USER_OBSGEOMS(1,2) = self%Surface%sensor_zenith
-      USER_OBSGEOMS(1,3) = self%Surface%relat_azimuth
+      USER_OBSGEOMS(1:self%Surface%Base%N_USER_OBSGEOMS,1) = self%Surface%solar_zenith
+      USER_OBSGEOMS(1:self%Surface%Base%N_USER_OBSGEOMS,2) = self%Surface%sensor_zenith
+      USER_OBSGEOMS(1:self%Surface%Base%N_USER_OBSGEOMS,3) = self%Surface%relat_azimuth
       BEAM_SZAS = 0.0
-      BEAM_SZAS(1) = self%Surface%solar_zenith
+      BEAM_SZAS(1:self%Surface%Base%N_USER_OBSGEOMS) = self%Surface%solar_zenith
       USER_ANGLES = 0.0
-      USER_ANGLES(1) = self%Surface%sensor_zenith
+      USER_ANGLES(1:self%Surface%Base%N_USER_OBSGEOMS) = self%Surface%sensor_zenith
       USER_RELAZMS = 0.0
-      USER_RELAZMS(1) = self%Surface%relat_azimuth
+      USER_RELAZMS(1:self%Surface%Base%N_USER_OBSGEOMS) = self%Surface%relat_azimuth
 
 
 !                Populate Scattering Phase Matrix
@@ -234,54 +234,55 @@
 
 !     Call the MASTER driver for doing the actual calculation
 !     -----------------------------------------------------------
-      CALL TWOSTREAM_MASTER &
-        ( MAXLAYERS, MAXTOTAL, MAXMESSAGES, MAXBEAMS, MAX_GEOMETRIES,     & 
-          MAX_USER_RELAZMS, MAX_USER_ANGLES, MAX_USER_OBSGEOMS,           & 
-          DO_UPWELLING, DO_DNWELLING, DO_PLANE_PARALLEL, DO_2S_LEVELOUT,  & 
-          DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT,                             & 
-          DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,     & 
-          DO_D2S_SCALING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,              & 
-          DO_SURFACE_LEAVING, DO_SL_ISOTROPIC, DO_PENTADIAG_INVERSE,      & 
-          self%Surface%Base%TSIO%BVPINDEX,                                &
-          self%Surface%Base%TSIO%BVPSCALEFACTOR,                          &
-          self%Surface%Base%TSIO%TAYLOR_ORDER,                            &
-          TAYLOR_SMALL,                                                   &
-          NLAYERS, self%Surface%Base%TSIO%NTOTAL,                         &
-          self%Surface%Base%TSIO%STREAM_VALUE,                            &
-          self%Surface%Base%N_USER_OBSGEOMS,                              &
-          USER_OBSGEOMS,                                                  &
-          self%Surface%Base%N_USER_ANGLES,                                &
-          USER_ANGLES,                                                    &
-          self%Surface%Base%N_USER_RELAZMS,                               &
-          USER_RELAZMS,                                                   &
-          self%Surface%Base%TSIO%FLUX_FACTOR,                             &
-          self%Surface%Base%NBEAMS,                                       &
-          BEAM_SZAS,                                                      &
-          self%Surface%Base%TSIO%EARTH_RADIUS,                            &
-          HEIGHT_GRID,                                                    & 
-          DELTAU_VERT_INPUT,                                              & 
-          OMEGA_TOTAL_INPUT,                                              &
-          ASSYM_VERT_INPUT,                                               &
-          D2S_SCALING,                                                    &
-          self%Surface%Base%TSIO%THERMAL_BB_INPUT,                        &
-          LAMBERTIAN_ALBEDO,                                              &
-          self%Surface%Base%TSIO%BRDF_F_0,                                &
-          self%Surface%Base%TSIO%BRDF_F,                                  &
-          self%Surface%Base%TSIO%UBRDF_F,                                 &
-          self%Surface%Base%TSIO%EMISSIVITY,                              &
-          self%Surface%Base%TSIO%SURFBB,                                  &
-          self%Surface%Base%TSIO%SLTERM_ISOTROPIC,                        &
-          self%Surface%Base%TSIO%SLTERM_F_0,                              &
-          INTENSITY_TOA, INTENSITY_BOA, FLUXES_TOA, FLUXES_BOA,           & ! Outputs 
-          RADLEVEL_UP, RADLEVEL_DN, N_GEOMETRIES,                         & ! Outputs
-          self%Surface%Base%TSIO%STATUS_INPUTCHECK,                       & ! Exception handling
-          self%Surface%Base%TSIO%C_NMESSAGES,                             & ! Exception handling
-          self%Surface%Base%TSIO%C_MESSAGES,                              & ! Exception handling
-          self%Surface%Base%TSIO%C_ACTIONS,                               & ! Exception handling
-          self%Surface%Base%TSIO%STATUS_EXECUTION,                        & ! Exception handling 
-          self%Surface%Base%TSIO%E_MESSAGE,                               & ! Exception handling
-          self%Surface%Base%TSIO%E_TRACE_1,                               & ! Exception handling
-          self%Surface%Base%TSIO%E_TRACE_2 )                                ! Exception handling
+write(*,*) 'MAXMESSAGES',MAXMESSAGES
+!      CALL TWOSTREAM_MASTER &
+!        ( MAXLAYERS, MAXTOTAL, MAXMESSAGES, MAXBEAMS, MAX_GEOMETRIES,     & 
+!          MAX_USER_RELAZMS, MAX_USER_ANGLES, MAX_USER_OBSGEOMS,           & 
+!          DO_UPWELLING, DO_DNWELLING, DO_PLANE_PARALLEL, DO_2S_LEVELOUT,  & 
+!          DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT,                             & 
+!          DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,     & 
+!          DO_D2S_SCALING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,              & 
+!          DO_SURFACE_LEAVING, DO_SL_ISOTROPIC, DO_PENTADIAG_INVERSE,      & 
+!          self%Surface%Base%TSIO%BVPINDEX,                                &
+!          self%Surface%Base%TSIO%BVPSCALEFACTOR,                          &
+!          self%Surface%Base%TSIO%TAYLOR_ORDER,                            &
+!          TAYLOR_SMALL,                                                   &
+!          NLAYERS, self%Surface%Base%TSIO%NTOTAL,                         &
+!          self%Surface%Base%TSIO%STREAM_VALUE,                            &
+!          self%Surface%Base%N_USER_OBSGEOMS,                              &
+!          USER_OBSGEOMS,                                                  &
+!          self%Surface%Base%N_USER_ANGLES,                                &
+!          USER_ANGLES,                                                    &
+!          self%Surface%Base%N_USER_RELAZMS,                               &
+!          USER_RELAZMS,                                                   &
+!          self%Surface%Base%TSIO%FLUX_FACTOR,                             &
+!          self%Surface%Base%NBEAMS,                                       &
+!          BEAM_SZAS,                                                      &
+!          self%Surface%Base%TSIO%EARTH_RADIUS,                            &
+!          HEIGHT_GRID,                                                    & 
+!          DELTAU_VERT_INPUT,                                              & 
+!          OMEGA_TOTAL_INPUT,                                              &
+!          ASSYM_VERT_INPUT,                                               &
+!          D2S_SCALING,                                                    &
+!          self%Surface%Base%TSIO%THERMAL_BB_INPUT,                        &
+!          LAMBERTIAN_ALBEDO,                                              &
+!          self%Surface%Base%TSIO%BRDF_F_0,                                &
+!          self%Surface%Base%TSIO%BRDF_F,                                  &
+!          self%Surface%Base%TSIO%UBRDF_F,                                 &
+!          self%Surface%Base%TSIO%EMISSIVITY,                              &
+!          self%Surface%Base%TSIO%SURFBB,                                  &
+!          self%Surface%Base%TSIO%SLTERM_ISOTROPIC,                        &
+!          self%Surface%Base%TSIO%SLTERM_F_0,                              &
+!          INTENSITY_TOA, INTENSITY_BOA, FLUXES_TOA, FLUXES_BOA,           & ! Outputs 
+!          RADLEVEL_UP, RADLEVEL_DN, N_GEOMETRIES,                         & ! Outputs
+!          self%Surface%Base%TSIO%STATUS_INPUTCHECK,                       & ! Exception handling
+!          self%Surface%Base%TSIO%C_NMESSAGES,                             & ! Exception handling
+!          self%Surface%Base%TSIO%C_MESSAGES,                              & ! Exception handling
+!          self%Surface%Base%TSIO%C_ACTIONS,                               & ! Exception handling
+!          self%Surface%Base%TSIO%STATUS_EXECUTION,                        & ! Exception handling 
+!          self%Surface%Base%TSIO%E_MESSAGE,                               & ! Exception handling
+!          self%Surface%Base%TSIO%E_TRACE_1,                               & ! Exception handling
+!          self%Surface%Base%TSIO%E_TRACE_2 )                                ! Exception handling
 
 !  Exception handling
 
@@ -305,7 +306,9 @@
 
 !     Return TOA radiance
 !     -------------------
-      output%RADIANCE = INTENSITY_TOA(1)
+      allocate(output%RADIANCE(self%Surface%Base%N_USER_OBSGEOMS))
+      allocate(output%REFLECTANCE(self%Surface%Base%N_USER_OBSGEOMS))
+      output%RADIANCE = INTENSITY_TOA(1:self%Surface%Base%N_USER_OBSGEOMS)
 
       output%REFLECTANCE = (pi * output%RADIANCE) / ( cos(self%Surface%solar_zenith/180.0) * self%Surface%Base%TSIO%FLUX_FACTOR)
 
