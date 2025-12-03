@@ -18,11 +18,12 @@ from   datetime        import datetime, timedelta
 from   dateutil.parser import parse         as isoparser
 import numpy   as np
 import xarray  as xr
+from netCDF4 import Dataset as ncDataset
 import yaml
 from inputs_vlidort import INPUTS_VLIDORT
 
 
-from py_vlidort.vlidort import MODIS_BRDF_CLOUD_run
+from py_vlidort.vlidort import MODIS_BRDF_PMATRIX_run
 from py_vlidort.twostream import MODIS_BRDF_run as ts_MODIS_BRDF_run
 from multiprocessing import Pool
 
@@ -60,6 +61,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
     inFile        : string template for inputs
     outFile       : where to write vlidort outputs
+    argsFile      : where to write vlidort inputs
     mtFile        : aerosol optics tables
     albedoType    : what kind of surface albedo model to use
     instname      : instrument name
@@ -70,7 +72,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
     brdfFile      : string template for file with brdf parameters
     verbose       : write debugging outputs
     """
-    def __init__(self,inFile,outFile,mtFile,albedoType,
+    def __init__(self,inFile,outFile,argsFile,mtFile,albedoType,
                 instname,dryrun,
                 nstreams=12,
                 plane_parallel=True,
@@ -85,6 +87,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.AERNAMES    = AERNAMES
         self.inFile      = inFile
         self.outFile     = outFile
+        self.argsFile    = argsFile
         self.albedoType  = albedoType
         self.mtFile      = mtFile
         self.verbose     = verbose
@@ -134,33 +137,46 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             # Calculate P,T atmospheric profile properties needed for Rayleigh calc
             self.getEdgeVars()
 
-            # Get pool of processors
-            if not dryrun and do_vlidort:
-                p = Pool(self.nproc)
+            if (self.nobs > 0) and not dryrun:
+                # Initiate Output Arrays
+                self.initOutputs()
 
-            if self.nobs > 0:
-                if not dryrun:
-                    # Loop through channels
-                    for ich,wavelength in enumerate(self.channels):
-                        print('ich ',ich)
-                        # Get Rayleigh optical depth profile
-                        self.getROT(wavelength)
+                # Loop through channels
+                for ich,channel in enumerate(self.channels):
+                    print('ich: ',ich,' channel: ',channel)
+                    # Get Rayleigh optical depth profile
+                    self.getROT(channel)
 
-                        # Initiate Output Arrays
-                        self.initOutputs()
-                        if do_vlidort:
+                    if do_vlidort:
+
+                        # Get the index of good obs
+                        iGood  = np.arange(len(self.iGood))[self.iGood]
+
+                        # loop through nobs in batches
+                        for sob in range(0,self.nobs,self.nbatch):
+                            print('sob, nobs',sob, self.nobs)
+                            eob = min([self.nobs,sob + self.nbatch])
+                            iobs = iGood[sob:eob]
+                            npts = eob - sob
+
+                            # Subset inputs for batch
+                            # And get optical property inputs
+                            args  = self.getargs(ich,sob,eob,iobs,npts)
+
+                            # Get pool of processors
+                            p = Pool(self.nproc)
                             # Run TWOSTREAM
-                            self.runTWOSTREAM(p,ich)
+                            print('   - run TWOSTREAM')
+                            self.runTWOSTREAM(p,ich,sob,args)
                             # Run VLIDORT using multiprocessing
-                            self.runVLIDORT(p,ich)
+                            print('   - run VLIDORT')
+                            self.runVLIDORT(p,ich,sob,args)
+                            # close pool of processors
+                            p.close()
 
-                    # Write outputs
-                    self.writeNC()
+                # Write outputs
+                self.writeNC()
  
-            # close pool of processors
-            if not dryrun and do_vlidort:
-                p.close()
-
     #--
     def getDims(self):
         """
@@ -322,19 +338,9 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.surf_reflectance = np.ones([nobs,nch])*MISSING
         self.BR_Q = np.ones([nobs,nch])*MISSING
         self.BR_U = np.ones([nobs,nch])*MISSING
-        self.TAU  = np.ones([nlev,nobs,nch])*MISSING
-        self.SSA  = np.ones([nlev,nobs,nch])*MISSING
-        self.G  = np.ones([nlev,nobs,nch])*MISSING
-        self.DEPOL = np.ones([nch])*MISSING
-        self.ROT_   = np.ones([nlev,nobs,nch])*MISSING
 
         self.ts_I = np.ones([nobs,nch])*MISSING
         self.ts_reflectance = np.ones([nobs,nch])*MISSING
-        self.ts_TAU  = np.ones([nlev,nobs,nch])*MISSING
-        self.ts_SSA  = np.ones([nlev,nobs,nch])*MISSING
-        self.ts_G  = np.ones([nlev,nobs,nch])*MISSING
-        self.ts_DEPOL = np.ones([nch])*MISSING
-        self.ts_ROT_   = np.ones([nlev,nobs,nch])*MISSING
 
     #---
     def getargs(self,ich,sob,eob,iobs,npts):
@@ -362,12 +368,12 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
         # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
         param     = self.RTLSparam[:,:,0:npts].astype('float64')
-        kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64')
+        kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64').to_numpy()
 
         # subset angles for good obs only. dims are [nobs]
-        vza = self.VZA[iobs].astype('float64')
-        sza = self.SZA[iobs].astype('float64')
-        raa = self.RAA[iobs].astype('float64')
+        vza = self.VZA[iobs].astype('float64').to_numpy()
+        sza = self.SZA[iobs].astype('float64').to_numpy()
+        raa = self.RAA[iobs].astype('float64').to_numpy()
 
         # cloud properties
         # empty for now
@@ -388,148 +394,462 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         flux_factor = np.ones([1]).astype('float64')
 
         args = rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor
+
+        self.writeArgs(ich,sob,eob,args)
+
         return args
 
     #---
-    def runTWOSTREAM(self,p,ich):
+    def runTWOSTREAM(self,p,ich,sob,args):
         """
         Calls TWOSTREAM
         """
-
-        # Get the index of good obs
-        iGood  = np.arange(len(self.iGood))[self.iGood]
-        nobs   = self.nobs
+        # Get pool of processors
+        p = Pool(self.nproc)
 
         # get wavlength
         channel = [self.channels[ich]]
 
-        # loop through nobs in batches
-        for sob in range(0,self.nobs,self.nbatch):
-            print('sob, nobs',sob, self.nobs)
-            eob = min([self.nobs,sob + self.nbatch])
-            iobs = iGood[sob:eob]
-            npts = eob - sob
+        # get last index and number of pts
+        eob = min([self.nobs,sob + self.nbatch])
+        npts = eob - sob
 
-            # Subset inputs for batch
-            rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = self.getargs(ich,sob,eob,iobs,npts)
-            # solar flux
-            # ones for now
-            flux_factor = np.ones([1,npts])
+        # Atmospheric Optical Property Arguments
+        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
 
-            # create list of input arguments
-            args = [(channel, self.plane_parallel, rot[:,i:i+1,:], depol_ratio,
-                    alpha[:,:,i:i+1],
-                    tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1],
-                    pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                    kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
-                    sza[i:i+1], raa[i:i+1], vza[i:i+1],
-                    flux_factor[:,i:i+1],
-                    MISSING,
-                    self.verbose) for i in range(npts)]
+        # create list of input arguments
+        args = [(channel, self.plane_parallel, rot[:,i:i+1,:], depol_ratio,
+                alpha[:,:,i:i+1],
+                tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1],
+                pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
+                kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
+                flux_factor,
+                MISSING,
+                self.verbose) for i in range(npts)]
 
-            # run vlidort distributed across processors
-            result = p.map(ts_MODIS_BRDF_run,args)
+        # run vlidort distributed across processors
+        result = p.map(ts_MODIS_BRDF_run,args)
 
-            # initialize temporary outputs
-            I = []
-            reflectance = []
+        # initialize temporary outputs
+        I = []
+        reflectance = []
 
-            # reshape outputs
-            for r in result:
-                I_r,reflectance_r = r
-                I.append(I_r)
-                reflectance.append(reflectance_r)
-            I = np.concatenate(I)
-            reflectance = np.concatenate(reflectance)
+        # reshape outputs
+        for r in result:
+            I_r,reflectance_r = r
+            I.append(I_r)
+            reflectance.append(reflectance_r)
+        I = np.concatenate(I)
+        reflectance = np.concatenate(reflectance)
 
-            # store outputs
-            self.ts_I[sob:eob,ich] = np.squeeze(I)
-            self.ts_reflectance[sob:eob,ich] = np.squeeze(reflectance)
-            self.ts_TAU[:,sob:eob,ich] = np.transpose(tau,[0,2,1]).squeeze()
-            self.ts_SSA[:,sob:eob,ich] = np.transpose(ssa,[0,2,1]).squeeze()
-            self.ts_G[:,sob:eob,ich] = np.transpose(g,[0,2,1]).squeeze()
-            self.ts_DEPOL[ich] = self.depol_ratio
-            self.ts_ROT_[:,sob:eob,ich] = rot.squeeze()
+        # store outputs
+        self.ts_I[sob:eob,ich] = np.squeeze(I)
+        self.ts_reflectance[sob:eob,ich] = np.squeeze(reflectance)
+
+        # close pool of processors
+        p.close()
 
     #---
-    def runVLIDORT(self,p,ich):
+    def runVLIDORT(self,p,ich,sob,args):
         """
         Calls VLIDORT 
         """
 
-        # Get the index of good obs
-        iGood  = np.arange(len(self.iGood))[self.iGood]
-        nobs   = self.nobs
-
         # get wavlength
         channel = [self.channels[ich]]
 
-        # loop through nobs in batches
-        for sob in range(0,self.nobs,self.nbatch):
-            print('sob, nobs',sob, self.nobs)
-            eob = min([self.nobs,sob + self.nbatch])
-            iobs = iGood[sob:eob]
-            npts = eob - sob
+        # get last ob and number of pts
+        eob = min([self.nobs,sob + self.nbatch])
+        npts = eob - sob
 
-            # Subset inputs for batch
-            rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = self.getargs(ich,sob,eob,iobs,npts)
-           
-            # create list of input arguments
-            args = [(channel, self.nstreams, self.plane_parallel, 
-                    rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
-                    tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
-                    tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
-                    tauL[:,:,i:i+1], ssaL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
-                    pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                    kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
-                    sza[i:i+1], raa[i:i+1], vza[i:i+1],
-                    flux_factor,
-                    MISSING,
-                    self.verbose) for i in range(npts)]
+        # Atmospheric Optical Property Inputs
+        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
+      
+        # vector or scalar
+        NSTOKES = 3
+ 
+        # create list of input arguments
+        args = [(channel, self.nstreams, self.plane_parallel,NSTOKES,self.angles,
+                rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
+                tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
+                tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
+                tauL[:,:,i:i+1], ssaL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
+                pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
+                kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
+                flux_factor,
+                MISSING,
+                self.verbose) for i in range(npts)]
 
-            # run vlidort distributed across processors
-            result = p.map(MODIS_BRDF_CLOUD_run,args)
+        # run vlidort distributed across processors
+        result = p.map(MODIS_BRDF_PMATRIX_run,args)
 
-            # initialize temporary outputs
-            I = []
-            Q = []
-            U = []
-            reflectance = []
-            surf_reflectance = []
-            BR_Q = []
-            BR_U = []
-           
-            # reshape outputs  
-            for r in result:
-                I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
-                I.append(I_r)
-                Q.append(Q_r)
-                U.append(U_r)
-                reflectance.append(reflectance_r)
-                surf_reflectance.append(surf_reflectance_r)
-                BR_Q.append(BR_Q_r)
-                BR_U.append(BR_U_r)
-            I = np.concatenate(I)
-            Q = np.concatenate(Q)
-            U = np.concatenate(U)
-            reflectance = np.concatenate(reflectance)
-            surf_reflectance = np.concatenate(surf_reflectance)
-            BR_Q = np.concatenate(BR_Q)
-            BR_U = np.concatenate(BR_U)
+        # initialize temporary outputs
+        I = []
+        Q = []
+        U = []
+        reflectance = []
+        surf_reflectance = []
+        BR_Q = []
+        BR_U = []
+       
+        # reshape outputs  
+        for r in result:
+            I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
+            I.append(I_r)
+            Q.append(Q_r)
+            U.append(U_r)
+            reflectance.append(reflectance_r)
+            surf_reflectance.append(surf_reflectance_r)
+            BR_Q.append(BR_Q_r)
+            BR_U.append(BR_U_r)
+        I = np.concatenate(I)
+        Q = np.concatenate(Q)
+        U = np.concatenate(U)
+        reflectance = np.concatenate(reflectance)
+        surf_reflectance = np.concatenate(surf_reflectance)
+        BR_Q = np.concatenate(BR_Q)
+        BR_U = np.concatenate(BR_U)
 
-            # store outputs 
-            self.I[sob:eob,ich] = np.squeeze(I)
-            self.reflectance[sob:eob,ich] = np.squeeze(reflectance)
-            self.surf_reflectance[sob:eob,ich] = np.squeeze(surf_reflectance)
-            self.Q[sob:eob,ich] = np.squeeze(Q)
-            self.U[sob:eob,ich] = np.squeeze(U) 
-            self.BR_Q[sob:eob,ich] = np.squeeze(BR_Q)
-            self.BR_U[sob:eob,ich] = np.squeeze(BR_U)
-            self.TAU[:,sob:eob,ich] = np.transpose(tau,[0,2,1]).squeeze()
-            self.SSA[:,sob:eob,ich] = np.transpose(ssa,[0,2,1]).squeeze()
-            self.G[:,sob:eob,ich] = np.transpose(g,[0,2,1]).squeeze()
-            self.DEPOL[ich] = self.depol_ratio
-            self.ROT_[:,sob:eob,ich] = rot.squeeze()
+        # store outputs 
+        self.I[sob:eob,ich] = np.squeeze(I)
+        self.reflectance[sob:eob,ich] = np.squeeze(reflectance)
+        self.surf_reflectance[sob:eob,ich] = np.squeeze(surf_reflectance)
+        self.Q[sob:eob,ich] = np.squeeze(Q)
+        self.U[sob:eob,ich] = np.squeeze(U) 
+        self.BR_Q[sob:eob,ich] = np.squeeze(BR_Q)
+        self.BR_U[sob:eob,ich] = np.squeeze(BR_U)
+
+    #---
+    def writeArgs(self,ich,sob,eob,args):
+        """
+        Write out the input arguments
+        """
+
+
+        if not os.path.exists(os.path.dirname(self.argsFile)):
+            os.makedirs(os.path.dirname(self.argsFile))
+
+        # Atmospheric Optical Property Inputs
+        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
+
+
+        if (ich == 0) and (sob == 0):
+            # create xarray data arrays of inputs
+            # ------------------------------------
+
+            # Define variable attributes
+            ch_att = dict(
+                        standard_name="wavelength",
+                        long_name="wavelength",
+                        units="nm",
+                        missing_value=MISSING,
+                        )
+
+            ang_att = dict(
+                        standard_name="angle",
+                        long_name="scattering angle",
+                        units="degrees",
+                        missing_value=MISSING,
+                        )
+
+            rot_att = dict(
+                        standard_name="ROT",
+                        long_name="rayleigh optical thickenss",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            depol_att = dict(
+                        standard_name="depolarization ratio",
+                        long_name="Rayleigh depolarization ratio",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            tau_att = dict(
+                        standard_name="TAU",
+                        long_name="aerosol optical thickenss",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            ssa_att = dict(
+                        standard_name="SSA",
+                        long_name="single scattering albedo",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            g_att = dict(
+                        standard_name="G",
+                        long_name="assymetry parameter",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            pmatrix_att = dict(
+                        standard_name="PMATRIX",
+                        long_name="aerosol scattering matrix (p11,22,33,44,12,34)",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            pe_att = dict(
+                        standard_name="PE",
+                        long_name="pressure at layer edges",
+                        units="Pa",
+                        missing_value=MISSING,
+                        )
+
+            ze_att = dict(
+                        standard_name="ZE",
+                        long_name="height above sea level at layer edges",
+                        units="m",
+                        missing_value=MISSING,
+                        )
+
+            te_att = dict(
+                        standard_name="TE",
+                        long_name="temperature at layer edges",
+                        units="K",
+                        missing_value=MISSING,
+                        )
+
+            kernel_wt_att = dict(
+                        standard_name="KERNEL_WT",
+                        long_name="RTLS BRDF kernel weights",
+                        units="None",
+                        missing_value=MISSING,
+                        )
+
+            param_att = dict(
+                        standard_name="RTLS_PARAM",
+                        long_name="RTLS parameters",
+                        units="K",
+                        missing_value=MISSING,
+                        )
+
+            sza_att = dict(
+                        standard_name="SZA",
+                        long_name="solar zenith angle",
+                        units="degrees",
+                        missing_value=MISSING,
+                        )
+
+            vza_att = dict(
+                        standard_name="VZA",
+                        long_name="sensor zenith angle",
+                        units="degrees",
+                        missing_value=MISSING,
+                        )
+
+            raa_att = dict(
+                        standard_name="RAA",
+                        long_name="relative azimuth angle",
+                        units="degrees",
+                        missing_value=MISSING,
+                        )
+
+            flux_att = dict(
+                        standard_name="FLUX",
+                        long_name="solar flux (F0)",
+                        units="Done",
+                        missing_value=MISSING,
+                        )
+
+            # Create dataset
+            ds = xr.Dataset(
+                data_vars=dict(
+                    wavelength=(['ch'],[self.channels[ich]],ch_att),
+                    angle=(['ang'],self.angles.data,ang_att),
+                ),
+                coords=dict(
+                    lev=np.arange(self.nlev),
+                    leve=np.arange(self.nlev+1),
+                    nobs=np.arange(self.nbatch),
+                    ang=np.arange(self.ang),
+                    ch=[ich],
+                    nkernel=np.arange(3),
+                    nparam=np.arange(2),
+                    npol=np.arange(6),
+                ),
+                attrs=dict(
+                    title='VLIDORT-GEOS-SBG Simulator Input Arguments',
+                    institution = 'NASA/Goddard Space Flight Center',
+                    source = 'Global Model and Assimilation Office',
+                    history = 'VLIDORT inputs derived from a GEOS simulation',
+                    references = 'n/a',
+                    contact = 'Patricia Castellanos <patricia.castellanos@nasa.gov>',
+                    Conventions = 'CF',
+                    inFile = self.inFile,
+                    ),
+            )
+
+            # Add 1-D Variables
+            dims = ["ch"]
+            coords = dict(
+                    ch=[ich],
+                )
+
+            da = xr.DataArray(depol_ratio,dims=dims,coords=coords,attrs=depol_att)
+            ds['DEPOL_RATIO'] = da
+
+
+            dims = ["nobs"]
+            coords = dict(
+                    nobs=np.arange(self.nbatch),
+                )
+
+            da = xr.DataArray(vza,dims=dims,coords=coords,attrs=vza_att)
+            ds['VZA'] = da
+
+            da = xr.DataArray(sza,dims=dims,coords=coords,attrs=sza_att)
+            ds['SZA'] = da
+
+            da = xr.DataArray(raa,dims=dims,coords=coords,attrs=raa_att)
+            ds['RAA'] = da
+
+            # Add 2-D Variables
+            dims = ["leve", "nobs"]
+            coords = dict(
+                    nobs=np.arange(self.nbatch),
+                    leve=np.arange(self.nlev+1),
+                )
+
+            da = xr.DataArray(pe,dims=dims,coords=coords,attrs=pe_att)
+            ds['PE'] = da
+
+            da = xr.DataArray(te,dims=dims,coords=coords,attrs=te_att)
+            ds['TE'] = da
+
+            da = xr.DataArray(ze,dims=dims,coords=coords,attrs=ze_att)
+            ds['ZE'] = da
+
+            # Add 3-D varaibles
+            dims = ["lev","nobs","ch"]
+            coords=dict(
+                    lev=np.arange(self.nlev),
+                    nobs=np.arange(self.nbatch),
+                    ch=[ich],
+                )
+
+            da = xr.DataArray(rot,dims=dims,coords=coords,attrs=rot_att)
+            ds['ROT'] = da
+
+            da = xr.DataArray(tau.transpose(0,2,1),dims=dims,coords=coords,attrs=tau_att)
+            ds['TAU'] = da
+
+            da = xr.DataArray(ssa.transpose(0,2,1),dims=dims,coords=coords,attrs=ssa_att)
+            ds['SSA'] = da
+
+            da = xr.DataArray(g.transpose(0,2,1),dims=dims,coords=coords,attrs=g_att)
+            ds['G'] = da      
+
+            dims = ["nparam","nobs","ch"]
+            coords=dict(
+                    nparam=np.arange(2),
+                    nobs=np.arange(self.nbatch),
+                    ch=[ich],
+                )  
+
+            da = xr.DataArray(param.transpose(0,2,1),dims=dims,coords=coords,attrs=param_att)
+            ds['RTLS_PARAM'] = da
+
+            dims = ["nkernel","nobs","ch"]
+            coords=dict(
+                    nkernel=np.arange(3),
+                    nobs=np.arange(self.nbatch),
+                    ch=[ich],
+                )
+
+            da = xr.DataArray(kernel_wt.transpose(0,2,1),dims=dims,coords=coords,attrs=kernel_wt_att)
+            ds['RTLS_KERNEL_WT'] = da
+
+            # Add 5-D varaibles
+            dims = ["lev","ang","npol","nobs","ch"]
+            coords=dict(
+                    lev=np.arange(self.nlev),
+                    nobs=np.arange(self.nbatch),
+                    ch=[ich],
+                    npol=np.arange(6),
+                )
+
+            da = xr.DataArray(pmatrix.transpose(0,3,4,2,1),dims=dims,coords=coords,attrs=pmatrix_att)
+            ds['PMATRIX'] = da
+
+            # Write netcdf file
+            encoding = dict(
+                ZE={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                TE={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                PE={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                RAA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                VZA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                SZA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                DEPOL_RATIO={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                ROT={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                TAU={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                SSA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                G={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                RTLS_PARAM={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                RTLS_KERNEL_WT={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                PMATRIX={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                )
+
+            ds.to_netcdf(path=self.argsFile,format='NETCDF4',engine='netcdf4',encoding=encoding,unlimited_dims=['nobs','ch'])
+
+        else:
+            #  Append along channel dimension
+            nc = ncDataset(self.argsFile,mode='a')
+
+            # add 1-D variables
+            var = nc.variables['DEPOL_RATIO']
+            var[ich] = depol_ratio
+
+            var = nc.variables['VZA']
+            var[sob:eob] = vza
+
+            var = nc.variables['SZA']
+            var[sob:eob] = sza
+
+            var = nc.variables['RAA']
+            var[sob:eob] = raa
+
+            # Add 2-D variables
+            var = nc.variables['PE']
+            var[:,sob:eob] = pe
+
+            var = nc.variables['TE']
+            var[:,sob:eob] = te
+
+            var = nc.variables['ZE']
+            var[:,sob:eob] = ze
+
+            # Add 3-D varaibles
+            var = nc.variables['ROT']
+            var[:,sob:eob,ich] = rot
+
+            var = nc.variables['TAU']
+            var[:,sob:eob,ich] = tau.transpose(0,2,1)
+
+            var = nc.variables['SSA']
+            var[:,sob:eob,ich] = ssa.transpose(0,2,1)
+
+            var = nc.variables['G']
+            var[:,sob:eob,ich] = g.transpose(0,2,1)
+
+            var = nc.variables['RTLS_PARAM']
+            var[:,sob:eob,ich] = param.transpose(0,2,1)
+
+            var = nc.variables['RTLS_KERNEL_WT']
+            var[:,sob:eob,ich] = kernel_wt.transpose(0,2,1)
+
+            # Add 5-D varaibles
+            var = nc.variables['PMATRIX']
+            var[:,:,:,sob:eob,ich] = pmatrix.transpose(0,2,3,4,1)
+
+            nc.close()
 
     #---
     def writeNC (self):
@@ -594,52 +914,10 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                     missing_value=MISSING,
                     )
 
-        depol_att = dict(
-                    standard_name="depolarization ratio",
-                    long_name="Rayleigh depolarization ratio",
-                    units="None",
-                    missing_value=MISSING,
-                    )
-
-        rot_att = dict(
-                    standard_name="Rayleigh optical thickness",
-                    long_name="Rayleigh optical thickness",
-                    units="None",
-                    missing_value=MISSING,
-                    )
-
         ch_att = dict(
                     standard_name="wavelength",
                     long_name="wavelength",
                     units="nm",
-                    missing_value=MISSING,
-                    )
-
-        aot_att = dict(
-                    standard_name="Aerosol Optical Thickness",
-                    long_name="Aerosol Optical Thickness",
-                    units="None",
-                    missing_value=MISSING,
-                    )
-
-        ssa_att = dict(
-                    standard_name="Aerosol Single Scattering Albedo",
-                    long_name="Aerosol Single Scattering Albedo",
-                    units="None",
-                    missing_value=MISSING,
-                    )
-
-        g_att = dict(
-                    standard_name="Aerosol Assymetry Parameter",
-                    long_name="Aerosol Assymetry Parameter",
-                    units="None",
-                    missing_value=MISSING,
-                    )
-
-        ts_toa_att = dict(
-                    standard_name="TWOSTREAM TOA Reflectance",
-                    long_name="reflectance at the top of the atmosphere from TWOSTREAM",
-                    units="None",
                     missing_value=MISSING,
                     )
 
@@ -650,6 +928,12 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                     missing_value=MISSING,
                     )
 
+        ts_toa_att = dict(
+                    standard_name="TWOSTREAM TOA Reflectance",
+                    long_name="reflectance at the top of the atmosphere from TWOSTREAM",
+                    units="None",
+                    missing_value=MISSING,
+                    )
 
         # Create dataset
         ds = xr.Dataset(
@@ -657,7 +941,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 wavelength=(['ch'],channels,ch_att),
             ),
             coords=dict(
-                lev=np.arange(self.nlev),
                 nobs=np.arange(self.nobs),
                 ch=chcoord,
             ),
@@ -672,15 +955,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 inFile = self.inFile,
                 ),
         )
-
-        # Add 1-D Variables
-        dims = ["ch"]
-        coords = dict(
-                ch=chcoord,
-            )
-
-        da = xr.DataArray(self.DEPOL,dims=dims,coords=coords,attrs=depol_att)
-        ds['depol_ratio'] = da
 
 
         # Add 2-D Variables
@@ -717,28 +991,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         da = xr.DataArray(self.ts_I,dims=dims,coords=coords,attrs=ts_I_att)
         ds['ts_I'] = da
 
-
-
-        # Add 3-D varaibles
-        dims = ["lev","nobs", "ch"]
-        coords=dict(
-                lev=np.arange(self.nlev),
-                nobs=np.arange(self.nobs),
-                ch=chcoord,
-            )
-
-        da = xr.DataArray(self.ROT_,dims=dims,coords=coords,attrs=rot_att)
-        ds['ROT'] = da
-
-        da = xr.DataArray(self.TAU,dims=dims,coords=coords,attrs=aot_att)
-        ds['TAU'] = da
-
-        da = xr.DataArray(self.SSA,dims=dims,coords=coords,attrs=ssa_att)
-        ds['SSA'] = da
-
-        da = xr.DataArray(self.G,dims=dims,coords=coords,attrs=g_att)
-        ds['G'] = da
-
         # Write netcdf file
         encoding = dict(
             toa_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
@@ -748,11 +1000,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             surf_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             surf_reflectance_Q={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             surf_reflectance_U={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-            depol_ratio={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-            ROT={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-            TAU={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-            SSA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-            G={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             ts_toa_reflectance={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             ts_I={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
             )
@@ -854,6 +1101,7 @@ if __name__ == "__main__":
 
         inFile     = inTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME)
         outFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname)
+        argsFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname).replace('vlidort','vlidort_args')
 
         if brdfTemplate is None:
             brdfFile = None
@@ -867,6 +1115,7 @@ if __name__ == "__main__":
         print('++++Running VLIDORT with the following arguments+++')
         print('>>>inFile:    ',inFile)
         print('>>>outFile:   ',outFile)
+        print('>>>argsFile:  ',argsFile)
         print('>>>mtFile:    ',mtFile)
         print('>>>albedoType:',albedoType)
         print('>>>brdfFile:  ',brdfFile)
@@ -874,7 +1123,7 @@ if __name__ == "__main__":
         print('>>>nproc:     ',args.nproc)
         print('++++End of arguments+++')
         
-        vlidort = SBG_VLIDORT(inFile,outFile,mtFile,
+        vlidort = SBG_VLIDORT(inFile,outFile,argsFile,mtFile,
                             albedoType, 
                             instname,
                             args.dryrun,
