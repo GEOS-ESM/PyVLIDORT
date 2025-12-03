@@ -22,6 +22,6 @@ ecbuild:
 GMAOpyobs:
   local: ./src/Shared/GMAO_Shared/GMAO_pyobs@
   remote: ../GMAOpyobs.git
-  branch: feature/pcastell/aoprt_fmatrix
+  branch: feature/pcastell/fix_pmatrix_order
 #  tag: v1.2.3
   develop: develop
