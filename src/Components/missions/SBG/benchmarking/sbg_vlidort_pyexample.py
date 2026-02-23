@@ -20,7 +20,7 @@ import numpy   as np
 import xarray  as xr
 from netCDF4 import Dataset as ncDataset
 import yaml
-from inputs_vlidort import INPUTS_VLIDORT
+from py_vlidort.inputs_vlidort import INPUTS_VLIDORT
 
 
 from py_vlidort.vlidort import MODIS_BRDF_PMATRIX_run

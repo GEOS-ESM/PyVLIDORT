@@ -119,8 +119,21 @@ def create_experiment_directory():
         config_filepath = current_directory / cf
         shutil.copy(config_filepath, experiment_directory / config_filepath.name)
 
-    # Copy script to the experiment directory.
-    scripts = ["sbg_vlidort_pyexample.py","inputs_vlidort.py"]
+    # Do you want the benchmark codes
+    benchmark = input("Is this a benchmark experiment (y/n,default: n):  ")
+    benchmark = benchmark.strip()
+
+    if not benchmark:
+        print("Defaulting to not providing benchmarking scripts")
+        benchmark = 'n'
+
+    if len(benchmark) > 1:
+        print(f"The benchmark response should be y or n")
+        sys.exit()
+
+    if benchmark == 'y':
+        # Copy script to the experiment directory.
+        scripts = ["benchmarking/sbg_vlidort_pyexample.py","benchmarking/lamb_vlidort_pyexample.py"]
     for sc in scripts:
         config_filepath = current_directory / sc
         shutil.copy(config_filepath, experiment_directory / config_filepath.name)
@@ -149,7 +162,10 @@ def create_experiment_directory():
         print(f"You can change the group id in the SLURM script available in the experiment directory")
         print()
 
-    loc_filename = "sbg_vlidort_run.j"
+    if benchmark == 'y':
+        loc_filename = "benchmarking/sbg_vlidort_run.j"
+    else:
+        loc_filename = "sbg_vlidort_run.j"
     target_dir = experiment_directory
     dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
     search_reaplace_in_file(loc_filename, target_dir, dict_words)
