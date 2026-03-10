@@ -37,7 +37,7 @@ def print_message():
     """
     print(mssg)
 
-def search_reaplace_in_file(loc_filename: str, 
+def search_reaplace_in_file(loc_filename: Path, 
                             target_dir: Path, 
                             dict_words: dict) -> None:
     """
@@ -54,7 +54,7 @@ def search_reaplace_in_file(loc_filename: str,
        Dictionary where the keys are old words and the corresponding values
        are the new words.
     """
-    new_filename = target_dir / loc_filename
+    new_filename = target_dir / loc_filename.name
     shutil.copy(loc_filename, new_filename)
 
     try:
@@ -164,15 +164,15 @@ def create_experiment_directory():
         print()
 
     if benchmark == 'y':
-        loc_filename = "benchmarking/sbg_vlidort_run.j"
+        loc_filename = Path("benchmarking/sbg_vlidort_run.j")
     else:
-        loc_filename = "sbg_vlidort_run.j"
+        loc_filename = Path("sbg_vlidort_run.j")
     target_dir = experiment_directory
     dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
     search_reaplace_in_file(loc_filename, target_dir, dict_words)
 
     if benchmark == 'y':
-        loc_filename = "benchmarking/lamb_vlidort_run.j"
+        loc_filename = Path("benchmarking/lamb_vlidort_run.j")
         target_dir = experiment_directory
         dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
         search_reaplace_in_file(loc_filename, target_dir, dict_words)
