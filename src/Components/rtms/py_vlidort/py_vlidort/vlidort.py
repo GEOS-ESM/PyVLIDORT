@@ -20,10 +20,10 @@ ncALIAS = {'LONGITUDE': 'trjLon',
 
 WrapperFuncs = {'MODIS_BRDF_PMATRIX'  : VLIDORT_POLAR_.brdf_modis_pmatrix,
                 'ROT_CALC'            : VLIDORT_POLAR_.rot_calc,
-                'MODIS_BRDF_PMOM'     : VLIDORT_POLAR_.brdf_modis_pmom}
+                'MODIS_BRDF_PMOM'     : VLIDORT_POLAR_.brdf_modis_pmom,
 #                'MODIS_BRDF_BPDF': VLIDORT_POLAR_.vector_brdf_modis_bpdf,
                 'LAMBERTIAN_PMOM'     : VLIDORT_POLAR_.lambert_pmom,
-                'LAMBERTIAN_PMATRIX'  : VLIDORT_POLAR_.lambert_pmatrix,
+                'LAMBERTIAN_PMATRIX'  : VLIDORT_POLAR_.lambert_pmatrix}
 #                'GissCX'         : VLIDORT_POLAR_.vector_gisscx,
 #                'CX'             : VLIDORT_POLAR_.vector_cx,
 #                'CX_CLOUD'             : VLIDORT_POLAR_.vector_cx_cloud,
