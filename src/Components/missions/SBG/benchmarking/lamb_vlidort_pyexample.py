@@ -139,7 +139,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 self.initOutputs()
 
                 # Loop through channels
-                for ich,channel in enumerate(self.channels):
+                for ich,channel in enumerate(self.channels[0:1]):
                     print('ich: ',ich,' channel: ',channel)
                     # Get Rayleigh optical depth profile
                     self.getROT(channel)
@@ -466,9 +466,9 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             Q.append(Q_r)
             U.append(U_r)
             reflectance.append(reflectance_r)
-            surf_reflectance.append(surf_reflectance_r)
-            BR_Q.append(BR_Q_r)
-            BR_U.append(BR_U_r)
+            surf_reflectance.append([self.albedo])
+            BR_Q.append([0.0])
+            BR_U.append([0.0])
         I = np.concatenate(I)
         Q = np.concatenate(Q)
         U = np.concatenate(U)
@@ -784,7 +784,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             var[:,sob:eob,ich] = g.transpose(0,2,1)
 
             var = nc.variables['ALBEDO']
-            var[:,sob:eob,ich] = self.albedo
+            var[sob:eob,ich] = self.albedo
 
             # Add 5-D varaibles
             var = nc.variables['PMATRIX']
@@ -1037,7 +1037,7 @@ if __name__ == "__main__":
 
         inFile     = inTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME)
         outFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%albedo',str(albedo))
-        argsFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname).replace('vlidort','vlidort_args')
+        argsFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%albedo',str(albedo)).replace('vlidort','vlidort_args')
 
         if brdfTemplate is None:
             brdfFile = None
