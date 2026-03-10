@@ -164,8 +164,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                             # Get pool of processors
                             p = Pool(self.nproc)
                             # Run TWOSTREAM
-                            print('   - run TWOSTREAM')
-                            self.runTWOSTREAM(p,ich,sob,args)
+#                            print('   - run TWOSTREAM')
+#                            self.runTWOSTREAM(p,ich,sob,args)
                             # Run VLIDORT using multiprocessing
                             print('   - run VLIDORT')
                             self.runVLIDORT(p,ich,sob,args)
@@ -331,10 +331,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         te   = self.te[:,sob:eob].astype('float64')
 
 
-        # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
-        param     = self.RTLSparam[:,:,0:npts].astype('float64')
-        kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64').to_numpy()
-
         # subset angles for good obs only. dims are [nobs]
         vza = self.VZA[iobs].astype('float64').to_numpy()
         sza = self.SZA[iobs].astype('float64').to_numpy()
@@ -358,7 +354,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         # constant for now
         flux_factor = np.ones([1]).astype('float64')
 
-        args = rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor
+        args = rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor
 
         self.writeArgs(ich,sob,eob,args)
 
@@ -429,7 +425,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         npts = eob - sob
 
         # Atmospheric Optical Property Inputs
-        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
+        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor = args
       
         # vector or scalar
         NSTOKES = 3
@@ -501,7 +497,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             os.makedirs(os.path.dirname(self.argsFile))
 
         # Atmospheric Optical Property Inputs
-        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
+        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor = args
 
 
         if (ich == 0) and (sob == 0):
@@ -586,17 +582,10 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                         missing_value=MISSING,
                         )
 
-            kernel_wt_att = dict(
-                        standard_name="KERNEL_WT",
-                        long_name="RTLS BRDF kernel weights",
+            albedo_att = dict(
+                        standard_name="ALBEDO",
+                        long_name="lambertian albedo",
                         units="None",
-                        missing_value=MISSING,
-                        )
-
-            param_att = dict(
-                        standard_name="RTLS_PARAM",
-                        long_name="RTLS parameters",
-                        units="K",
                         missing_value=MISSING,
                         )
 
@@ -640,8 +629,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                     nobs=np.arange(self.nbatch),
                     ang=np.arange(self.ang),
                     ch=[ich],
-                    nkernel=np.arange(3),
-                    nparam=np.arange(2),
                     npol=np.arange(6),
                 ),
                 attrs=dict(
@@ -716,25 +703,14 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             da = xr.DataArray(g.transpose(0,2,1),dims=dims,coords=coords,attrs=g_att)
             ds['G'] = da      
 
-            dims = ["nparam","nobs","ch"]
+            dims = ["nobs","ch"]
             coords=dict(
-                    nparam=np.arange(2),
-                    nobs=np.arange(self.nbatch),
-                    ch=[ich],
-                )  
-
-            da = xr.DataArray(param.transpose(0,2,1),dims=dims,coords=coords,attrs=param_att)
-            ds['RTLS_PARAM'] = da
-
-            dims = ["nkernel","nobs","ch"]
-            coords=dict(
-                    nkernel=np.arange(3),
                     nobs=np.arange(self.nbatch),
                     ch=[ich],
                 )
 
-            da = xr.DataArray(kernel_wt.transpose(0,2,1),dims=dims,coords=coords,attrs=kernel_wt_att)
-            ds['RTLS_KERNEL_WT'] = da
+            da = xr.DataArray(self.albedo,dims=dims,coords=coords,attrs=albedo_att)
+            ds['ALBEDO'] = da
 
             # Add 5-D varaibles
             dims = ["lev","ang","npol","nobs","ch"]
@@ -761,8 +737,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 TAU={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
                 SSA={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
                 G={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-                RTLS_PARAM={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
-                RTLS_KERNEL_WT={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
+                ALBEDO={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
                 PMATRIX={"zlib":True,"_FillValue":MISSING,"dtype":"f4",},
                 )
 
@@ -808,11 +783,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             var = nc.variables['G']
             var[:,sob:eob,ich] = g.transpose(0,2,1)
 
-            var = nc.variables['RTLS_PARAM']
-            var[:,sob:eob,ich] = param.transpose(0,2,1)
-
-            var = nc.variables['RTLS_KERNEL_WT']
-            var[:,sob:eob,ich] = kernel_wt.transpose(0,2,1)
+            var = nc.variables['ALBEDO']
+            var[:,sob:eob,ich] = self.albedo
 
             # Add 5-D varaibles
             var = nc.variables['PMATRIX']
