@@ -133,7 +133,8 @@ def create_experiment_directory():
 
     if benchmark == 'y':
         # Copy script to the experiment directory.
-        scripts = ["benchmarking/sbg_vlidort_pyexample.py","benchmarking/lamb_vlidort_pyexample.py"]
+        scripts = ["benchmarking/sbg_vlidort_pyexample.py","benchmarking/lamb_vlidort_pyexample.py",
+                   "benchmarking/sbg_files.yaml","benchmarking/lamb_files.yaml","benchmarking/m2_aop.yaml"]
     for sc in scripts:
         config_filepath = current_directory / sc
         shutil.copy(config_filepath, experiment_directory / config_filepath.name)
@@ -169,6 +170,13 @@ def create_experiment_directory():
     target_dir = experiment_directory
     dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
     search_reaplace_in_file(loc_filename, target_dir, dict_words)
+
+    if benchmark == 'y':
+        loc_filename = "benchmarking/lamb_vlidort_run.j"
+        target_dir = experiment_directory
+        dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
+        search_reaplace_in_file(loc_filename, target_dir, dict_words)
+
 
     print()
     print("-"*70)
