@@ -134,7 +134,8 @@ def create_experiment_directory():
     if benchmark == 'y':
         # Copy script to the experiment directory.
         scripts = ["benchmarking/sbg_vlidort_pyexample.py","benchmarking/lamb_vlidort_pyexample.py",
-                   "benchmarking/sbg_files.yaml","benchmarking/lamb_files.yaml","benchmarking/m2_aop.yaml"]
+                   "benchmarking/sbg_files.yaml","benchmarking/lamb_files.yaml","benchmarking/m2_aop.yaml",
+                   "benchmarking/lamb_vlidort.yaml"]               
     for sc in scripts:
         config_filepath = current_directory / sc
         shutil.copy(config_filepath, experiment_directory / config_filepath.name)
