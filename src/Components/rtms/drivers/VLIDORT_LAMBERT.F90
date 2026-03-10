@@ -20,7 +20,7 @@ module VLIDORT_LAMBERT
   end function IS_MISSING
 
   subroutine VLIDORT_Lambert_pmom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, &
-                     nPol, NSTOKES, ROT, depol, alpha, tau, ssa, g, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+                     nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor,  &
                      MISSING,verbose,radiance_VL,reflectance_VL, Q, U, rc, &
@@ -60,7 +60,6 @@ module VLIDORT_LAMBERT
   !                                                   ! --- Mie Parameters ---
     real*8, target,   intent(in)  :: tau(km,nch,nobs) ! aerosol optical depth
     real*8, target,   intent(in)  :: ssa(km,nch,nobs) ! single scattering albedo
-    real*8, target,   intent(in)  :: g(km,nch,nobs)   ! asymmetry factor
     real*8, target,   intent(in)  :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
 
     real*8, target,   intent(in)  :: tauI(km,nch,nobs) ! ice cloud optical depth
@@ -299,7 +298,7 @@ module VLIDORT_LAMBERT
     real*8, target,   intent(in)  :: relat_azymuth(nobs,ngeom) 
     real*8, target,   intent(in)  :: sensor_zenith(nobs,ngeom) 
 
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)  :: flux_factor(nch) ! solar flux (F0)
     real*8, target,   intent(in)  :: albedo(nobs,nch,ngeom)       ! surface albedo
 
     integer,          intent(in)  :: verbose
@@ -375,7 +374,7 @@ module VLIDORT_LAMBERT
 
        do i = 1, nch
          ! set solar flux
-         SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i,j)
+         SCAT%Surface%Base%VIO%VLIDORT_FixIn%SunRays%TS_FLUX_FACTOR = flux_factor(i)
 
          if ( IS_MISSING(albedo(j,i,1),MISSING) ) then
                 radiance_VL(j,i,:) = MISSING
