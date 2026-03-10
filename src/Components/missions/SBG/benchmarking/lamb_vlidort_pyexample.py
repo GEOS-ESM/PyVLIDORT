@@ -63,7 +63,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
     outFile       : where to write vlidort outputs
     argsFile      : where to write vlidort inputs
     mtFile        : aerosol optics tables
-    albedoType    : what kind of surface albedo model to use
+    albedo        : lambertian albedo value
     instname      : instrument name
     dryrun        : set everything up but don't calculate AOPs or run VLIDORT
     do_vlidort    : calculate AOPs but don't run VLIDORT
@@ -72,7 +72,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
     brdfFile      : string template for file with brdf parameters
     verbose       : write debugging outputs
     """
-    def __init__(self,inFile,outFile,argsFile,mtFile,albedoType,
+    def __init__(self,inFile,outFile,argsFile,mtFile,albedo,
                 instname,dryrun,
                 nstreams=12,
                 plane_parallel=True,
@@ -88,7 +88,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.inFile      = inFile
         self.outFile     = outFile
         self.argsFile    = argsFile
-        self.albedoType  = albedoType
+        self.albedo      = albedo
         self.mtFile      = mtFile
         self.verbose     = verbose
         self.brdfFile    = brdfFile
@@ -120,9 +120,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
 
         if self.nobs > 0:
 
-            # Read in surface data
-            self.readSampledAMESBRDF()
-
             # Land-Sea Mask
             # limit iGood to land pixels
             self.LandSeaMask()      
@@ -153,7 +150,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                         iGood  = np.arange(len(self.iGood))[self.iGood]
 
                         # loop through nobs in batches
-                        for sob in range(0,self.nobs,self.nbatch):
+#                        for sob in range(0,self.nobs,self.nbatch):
+                        for sob in [0]:
                             print('sob, nobs',sob, self.nobs)
                             eob = min([self.nobs,sob + self.nbatch])
                             iobs = iGood[sob:eob]
@@ -435,6 +433,10 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
       
         # vector or scalar
         NSTOKES = 3
+
+        # albedo
+        albedo = np.array(self.albedo)
+        albedo.shape = (1,1,1) 
  
         # create list of input arguments
         args = [(channel, self.nstreams, self.plane_parallel,NSTOKES,self.angles,
@@ -443,14 +445,14 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
                 tauL[:,:,i:i+1], ssaL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
                 pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                albedo,
                 [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
                 flux_factor,
                 MISSING,
                 self.verbose) for i in range(npts)]
 
         # run vlidort distributed across processors
-        result = p.map(MODIS_BRDF_PMATRIX_run,args)
+        result = p.map(LAMBERTIAN_PMATRIX_run,args)
 
         # initialize temporary outputs
         I = []
@@ -983,7 +985,6 @@ if __name__ == "__main__":
     # Defaults
     DT_mins   = 1
     mtFile     = 'm2_aop.yaml'
-    albedoType = None
     nproc      = 125
 
 #   Parse command line options
@@ -998,8 +999,8 @@ if __name__ == "__main__":
     parser.add_argument("inputs_yaml",
                         help="yaml file with input configuration file names")
 
-    parser.add_argument("-a","--albedotype", default=albedoType,
-                        help="albedo type keyword. default is to figure out according to channel")
+    parser.add_argument("albedo",type=float, 
+                        help="albedo value")
 
     parser.add_argument("--mtFile",default=mtFile,
                         help="mtFile (default=%s)"%mtFile)
@@ -1021,12 +1022,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     mtFile         = args.mtFile
-    albedoType     = args.albedotype
+    albedo         = args.albedo
     do_vlidort     = not args.novlidort
-
-    # figure out albedoType keyword
-    if albedoType is None:
-        albedoType = 'LAMBERTIAN'
 
 
     config = yaml.safe_load(open(args.inputs_yaml))
@@ -1067,7 +1064,7 @@ if __name__ == "__main__":
         minute = str(date.minute).zfill(2)
 
         inFile     = inTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME)
-        outFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname)
+        outFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%albedo',albedo)
         argsFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname).replace('vlidort','vlidort_args')
 
         if brdfTemplate is None:
@@ -1084,14 +1081,14 @@ if __name__ == "__main__":
         print('>>>outFile:   ',outFile)
         print('>>>argsFile:  ',argsFile)
         print('>>>mtFile:    ',mtFile)
-        print('>>>albedoType:',albedoType)
+        print('>>>albedo:    ',albedo)
         print('>>>brdfFile:  ',brdfFile)
         print('>>>verbose:   ',args.verbose)
         print('>>>nproc:     ',args.nproc)
         print('++++End of arguments+++')
         
         vlidort = SBG_VLIDORT(inFile,outFile,argsFile,mtFile,
-                            albedoType, 
+                            albedo, 
                             instname,
                             args.dryrun,
                             brdfFile=brdfFile,
