@@ -220,7 +220,10 @@
       USE VLIDORT_PARS_m
       USE vfzmat_Rayleigh_m
       USE vfzmat_Master_m
-         
+      USE vfzmat_Rayleigh_debug_m, only: write_vfzmat_Rayleigh_debug
+      USE vfzmat_Master_debug_m, only: write_vfzmat_Master_debug        
+      USE aop_total_inputs_debug_m, only: write_aop_total_inputs_debug 
+
       type(VLIDORT_scat),    intent(inout)  :: self        ! Contains most input and container for combined AOPs
       integer,               intent(out)    :: rc
 
@@ -256,8 +259,8 @@
       real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: clLvmoms 
       real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: clIvmoms  
 
-      real*8, dimension(MAX_GEOMETRIES,MAXLAYERS,6)      :: rayFmatrices_up
-      real*8, dimension(MAX_GEOMETRIES,MAXLAYERS,6)      :: rayFmatrices_dn
+      real*8, dimension(MAX_GEOMETRIES,6)                :: rayFmatrices_up
+      real*8, dimension(MAX_GEOMETRIES,6)                :: rayFmatrices_dn
       real*8, dimension(0:2, 6)                          :: RayCoeffs
       real*8, dimension(MAX_GEOMETRIES,MAXLAYERS,6)      :: aerFmatrices_up
       real*8, dimension(MAX_GEOMETRIES,MAXLAYERS,6)      :: aerFmatrices_dn
@@ -369,6 +372,19 @@
              OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS, DEPOL_RATIO,      & ! Input  Geometries + Depol
              RayFmatrices_up, RayFmatrices_dn, RayZmatrices_up, RayZmatrices_dn, rayCoeffs )
 
+          if ( self%Surface%Base%DO_DEBUG_INPUT ) then
+            ! --- Call the debug writer ---
+            call write_vfzmat_Rayleigh_debug( &
+                MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES, MAX_USER_RELAZMS, &
+                MAXLAYERS,                                                          &
+                do_upwelling, do_dnwelling, do_ObsGeoms, do_Sunlight,              &
+                self%NSTOKES, N_GEOMS, N_SZAS, N_VZAS, N_AZMS,                    &
+                OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS, DEPOL_RATIO,     &
+                RayFmatrices_up, RayFmatrices_dn,                                  &
+                RayZmatrices_up, RayZmatrices_dn,                                  &
+                RayCoeffs )        
+           end if
+
         if (any(self%tau > 0.0)) then
         !  Call to the supplement master for aerosols
           Call vfzmat_Master &
@@ -379,6 +395,21 @@
              self%nmom, NLAYERS, self%NSTOKES, N_GEOMS, N_SZAS, N_VZAS, N_AZMS,        & ! Input  Numbers
              OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS,                          & ! Input  Geometries
              AerFmatrices_up, AerFmatrices_dn, AerZmatrices_up, AerZmatrices_dn, aerCoeffs )
+
+           if ( self%Surface%Base%DO_DEBUG_INPUT ) then
+                ! --- Call the debug writer ---
+                call write_vfzmat_Master_debug( &
+                    MAXMOMENTS_INPUT, MAX_GEOMETRIES, MAX_SZANGLES, MAX_USER_VZANGLES, &
+                    MAX_USER_RELAZMS, MAXLAYERS,                                        &
+                    self%Surface%Base%Max_InAngles, self%N_InAngles,                   &
+                    self%InAngles, self%fmatrix, Exist_InFmatrices,                    &
+                    do_upwelling, do_dnwelling, do_ObsGeoms, do_Sunlight,              &
+                    self%nmom, NLAYERS, self%NSTOKES, N_GEOMS, N_SZAS, N_VZAS, N_AZMS,&
+                    OFFSETS, DEG_TO_RAD, SZAS, VZAS, AZMS, OBSGEOMS,                  &
+                    AerFmatrices_up, AerFmatrices_dn,                                  &
+                    AerZmatrices_up, AerZmatrices_dn,                                  &
+                    AerCoeffs )
+           end if
         end if
 
         if (any(self%tauL > 0.0)) then
@@ -409,12 +440,8 @@
 
         !  Copy the FMatCoeffs to the right locations of the greekmat
           rayvmoms(0:2,1)  =     rayCoeffs(0:2,1)
-          rayvmoms(0:2,2)  = -1.*rayCoeffs(0:2,5)
-          rayvmoms(0:2,5)  = -1.*rayCoeffs(0:2,5)
-          rayvmoms(0:2,6)  =     rayCoeffs(0:2,2)
-          rayvmoms(0:2,11) =     rayCoeffs(0:2,3)
-          rayvmoms(0:2,12) = -1.*rayCoeffs(0:2,6)
-          rayvmoms(0:2,15) =     rayCoeffs(0:2,6)
+          rayvmoms(0:2,2)  =     rayCoeffs(0:2,5)
+          rayvmoms(0:2,5)  =     rayCoeffs(0:2,5)
           rayvmoms(0:2,16) =     rayCoeffs(0:2,4)
 
         !     Loop over the layers:
@@ -576,9 +603,9 @@
          clIswt = ssaI_l * tauI_l/ tau_scat
 
          if ( self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_SSCORR_USEFMAT ) then  ! Combine the fmatrices
-            fmatrix_up(i,1:N_GEOMS,:) = rayswt * RayFmatrices_up(1:N_GEOMS,i,:) + aerswt * AerFmatrices_up(1:N_GEOMS,i,:) + &
+            fmatrix_up(i,1:N_GEOMS,:) = rayswt * RayFmatrices_up(1:N_GEOMS,:) + aerswt * AerFmatrices_up(1:N_GEOMS,i,:) + &
                                         clLswt * clLFmatrices_up(1:N_GEOMS,i,:) + clIswt * clIFmatrices_up(1:N_GEOMS,i,:)
-            fmatrix_dn(i,1:N_GEOMS,:) = rayswt * RayFmatrices_dn(1:N_GEOMS,i,:) + aerswt * AerFmatrices_dn(1:N_GEOMS,i,:) + &
+            fmatrix_dn(i,1:N_GEOMS,:) = rayswt * RayFmatrices_dn(1:N_GEOMS,:) + aerswt * AerFmatrices_dn(1:N_GEOMS,i,:) + &
                                         clLswt * clLFmatrices_dn(1:N_GEOMS,i,:) + clIswt * clIFmatrices_dn(1:N_GEOMS,i,:)
          end if 
  
@@ -607,6 +634,20 @@
       if ( self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_SSCORR_USEFMAT ) then  ! provide the fmatrices
           self%AOP%fmatrix_up => fmatrix_up
           self%AOP%fmatrix_dn => fmatrix_dn
+      end if
+
+      if ( self%Surface%Base%DO_DEBUG_INPUT ) then
+        ! --- debug writer ---
+        call write_aop_total_inputs_debug( &
+            MAXLAYERS, MAXMOMENTS_INPUT, MAX_GEOMETRIES,                         &
+            NLAYERS,self%Surface%Base%VIO%VLIDORT_FixIn%Cont%TS_NSTREAMS,         &
+            N_GEOMS,                                                             &
+            self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_SSCORR_USEFMAT,     &
+            deltau_vert_input,                                                    &
+            omega_total_input,                                                    &
+            greekmat_total_input,                                                 &
+            fmatrix_up,                                                           &
+            fmatrix_dn )
       end if
                
       end subroutine VLIDORT_CombineAOP
