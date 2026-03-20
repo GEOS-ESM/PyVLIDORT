@@ -30,7 +30,7 @@ source $SRC_DIR/env@/g5_modules
 #          Run Sampler 
 #######################################################################
 if (! -d ExtData) then
-    ln -s /home/pcastell/opendap/dasilva_fvinput/ExtData/chemistry/AerosolOptics/v1.0.0/  ExtData
+    ln -s /discover/nobackup/pcastell/workspace/GEOSmie_refactor/dustupdate/AerosolOptics/v2.0.0/x  ExtData
 endif
 
-python3 -u ./sbg_vlidort_pyexample.py 2006-01-16T17:35 2006-01-16T17:36  sbg_vlidort.yaml >& aaq_sampler-${SLURM_JOB_ID}.log
+python3 -u ./sbg_vlidort_pyexample.py 2006-01-16T17:35 2006-01-16T17:36  sbg_vlidort.yaml >& sbg_vlidort-${SLURM_JOB_ID}.log

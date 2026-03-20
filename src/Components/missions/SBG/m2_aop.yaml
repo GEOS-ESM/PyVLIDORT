@@ -15,7 +15,7 @@
 #                pmconversion = 1.3756 for Sulfate
 
 DU:
-  monoFile: ExtDataColarco/optics_DU.v2.0.0.GSFun-129.nc4
+  monoFile: ExtData/optics_DU.v2.0.0.nomom.nc4
   tracers:
     - DU001
     - DU002
@@ -24,7 +24,7 @@ DU:
     - DU005
 
 SS:
-  monoFile: ExtDataColarco/optics_SS.v2.0.0.GSFun-129.nc4
+  monoFile: ExtData/optics_SS.v2.0.0.nomom.nc4
   tracers:
     - SS001
     - SS002
@@ -33,18 +33,18 @@ SS:
     - SS005
 
 OC:
-  monoFile: ExtDataColarco/optics_OC.v2.0.0.GSFun-129.nc4
+  monoFile: ExtData/optics_OC.v2.0.0.nomom.nc4
   tracers:
     - OCPHOBIC
     - OCPHILIC
 
 BC:
-  monoFile: ExtDataColarco/optics_BC.v2.0.0.GSFun-129.nc4
+  monoFile: ExtData/optics_BC.v2.0.0.nomom.nc4
   tracers:
     - BCPHOBIC
     - BCPHILIC
 
 SU:
-  monoFile: ExtDataColarco/optics_SU.v2.0.0.GSFun-129.nc4
+  monoFile: ExtData/optics_SU.v2.0.0.nomom.nc4
   tracers:
     - SO4
