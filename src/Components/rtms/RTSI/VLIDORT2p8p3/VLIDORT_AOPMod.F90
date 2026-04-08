@@ -320,13 +320,17 @@
       do_dnwelling = self%Surface%Base%VIO%VLIDORT_FixIn%Bool%TS_DO_DNWELLING
       OFFSETS = 0
       N_GEOMS = self%Surface%Base%VIO%VLIDORT_ModIn%MUserVal%TS_N_USER_OBSGEOMS
-      N_SZAS = 0 ; N_VZAS = 0 ; N_AZMS = 0
-      SZAS = zero ; VZAS = zero ; AZMS = zero
+      N_SZAS = 1 ; N_VZAS = 1 ; N_AZMS = 1
       Exist_InFmatrices = .false.
       Exist_InFmatrices(1:NLAYERS) = .true.
       do_ObsGeoms = self%Surface%Base%VIO%VLIDORT_ModIn%MBool%TS_DO_OBSERVATION_GEOMETRY   ! set in Mod, must be true
       OBSGEOMS = 0.0 ! initialize for safety
       OBSGEOMS(1:self%Surface%Base%N_USER_OBSGEOMS,:) = self%Surface%Base%VIO%VLIDORT_ModIn%MUserVal%TS_USER_OBSGEOMS_INPUT(1:self%Surface%Base%N_USER_OBSGEOMS,:)
+      SZAS = OBSGEOMS(1,1)
+      VZAS = OBSGEOMS(1,2)
+      AZMS = OBSGEOMS(1,3)
+
+
 
 !                Populate Scattering Phase Matrix
 !                ---------------------------------
@@ -442,6 +446,7 @@
           rayvmoms(0:2,1)  =     rayCoeffs(0:2,1)
           rayvmoms(0:2,2)  =     rayCoeffs(0:2,5)
           rayvmoms(0:2,5)  =     rayCoeffs(0:2,5)
+          rayvmoms(0:2,6)  =     rayCoeffs(0:2,2)
           rayvmoms(0:2,16) =     rayCoeffs(0:2,4)
 
         !     Loop over the layers:
