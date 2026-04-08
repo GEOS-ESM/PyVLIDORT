@@ -132,6 +132,7 @@
       integer                                :: N_SZANGLES
       real*8, dimension( MAX_SZANGLES )      :: SZANGLES 
       real*8                                 :: EARTH_RADIUS
+      real*8                                 :: FINEGRID
       real*8                                 :: RFINDEX_PARAMETER
       real*8                                 :: GEOMETRY_SPECHEIGHT
       integer                                :: N_USER_OBSGEOMS
@@ -182,8 +183,9 @@
       else
           ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
           ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
-          DO_FOCORR_OUTGOING = .false.
+          DO_FOCORR_OUTGOING = .true.
           ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation
+          ! disabling this for now.  more development needs to be done in driver scripts to get this working
           DO_MSSTS           = .false.
       end if
       DO_FOCORR          = .true.  ! Do First-Order correction?  Must be set tu use exact single scatter instead of the truncated phase function
@@ -201,7 +203,9 @@
       if (self%DO_PLANE_PARALLEL) then
           DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere?
       else
-          DO_REFRACTIVE_GEOMETRY = .true. ! Beam path with refractive atmosphere?
+          DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere? 
+                                           ! disabling this for now.  Rob indicates that this is not implemented
+                                           ! correctly for DO_FOCORR_OUTGOING at the moment
       end if
      
 !                         Performance Control
@@ -234,10 +238,10 @@
       DO_WRITE_FOURIER  = .false. ! Fourier component output write?
       DO_WRITE_RESULTS  = .false. ! Results write?
       
-      INPUT_WRITE_FILENAME    = '/dev/null' ! filename for input write
-      SCENARIO_WRITE_FILENAME = '/dev/null' ! filename for scenario write
-      FOURIER_WRITE_FILENAME  = '/dev/null' ! Fourier output filename
-      RESULTS_WRITE_FILENAME  = '/dev/null' ! filename for main output
+      INPUT_WRITE_FILENAME    = 'input.dat' !'/dev/null' ! filename for input write
+      SCENARIO_WRITE_FILENAME = 'scen.dat'  !'/dev/null' ! filename for scenario write
+      FOURIER_WRITE_FILENAME  = 'four.dat'  !'/dev/null' ! Fourier output filename
+      RESULTS_WRITE_FILENAME  = 'results.dat' !'/dev/null' ! filename for main output
 
       NSTREAMS = self%NSTREAMS         ! Number of half-space streams
       NLAYERS = km                    ! Number of atmospheric layers
@@ -257,6 +261,9 @@
 !                        -----------------------
 
       EARTH_RADIUS = 6371.0 ! Earth radius (km)
+      FINEGRID          = 10.0     ! number of fine layer divisions to be used in Snell’s Law bending 
+                                   ! in the Chapman factor calculation with refraction. 
+                                   ! Recommended to set FINEGRID(N)=10. Refraction only.
       RFINDEX_PARAMETER = 0.000288 ! Refractive index parameter
       GEOMETRY_SPECHEIGHT = 0.0 ! Input geometry specification height [km]
 
@@ -266,6 +273,7 @@
 
       DO_THERMAL_EMISSION  = .false.  ! Do thermal emission?
       SURFBB               = 0.0      ! surface black body emissionnn
+      THERMAL_BB_INPUT     = 0.0      ! Atmospheric thermal blackbody functions, levels n
 
       DO_THERMAL_TRANSONLY = .false.  ! Do thermal emission, transmittance only?
       N_THERMAL_COEFFS     = 2        ! Number of thermal coefficients
@@ -350,7 +358,7 @@
       !VLIDORT_Chapman_inputs%TS_HEIGHT_GRID                     = HEIGHT_GRID
       !VLIDORT_Chapman_inputs%TS_PRESSURE_GRID                   = PRESSURE_GRID
       !VLIDORT_Chapman_inputs%TS_TEMPERATURE_GRID                = TEMPERATURE_GRID
-      !VLIDORT_Chapman_inputs%TS_FINEGRID                        = FINEGRID
+      self%VIO%VLIDORT_FixIn%Chapman%TS_FINEGRID                 = FINEGRID
       self%VIO%VLIDORT_ModIn%MChapman%TS_EARTH_RADIUS            = EARTH_RADIUS
       self%VIO%VLIDORT_FixIn%Chapman%TS_RFINDEX_PARAMETER       = RFINDEX_PARAMETER
 
