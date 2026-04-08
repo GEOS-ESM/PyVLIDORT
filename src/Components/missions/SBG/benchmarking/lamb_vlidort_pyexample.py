@@ -977,6 +977,9 @@ if __name__ == "__main__":
     parser.add_argument("--mtFile",default=mtFile,
                         help="mtFile (default=%s)"%mtFile)
 
+    parser.add_argument("--do_sphericity",action="store_true",
+                        help="use spherical atmosphere in VLIDORT")
+
     parser.add_argument("-D","--DT_mins", default=DT_mins, type=int,
                         help="Timestep in minutes for each file (default=%i)"%DT_mins)
 
@@ -997,6 +1000,10 @@ if __name__ == "__main__":
     albedo         = args.albedo
     do_vlidort     = not args.novlidort
 
+    if args.do_sphericity:
+        plane_parallel = False
+    else:
+        plane_parallel = True
 
     config = yaml.safe_load(open(args.inputs_yaml))
     args.paths_yaml = config['paths_yaml']
@@ -1057,6 +1064,7 @@ if __name__ == "__main__":
         print('>>>brdfFile:  ',brdfFile)
         print('>>>verbose:   ',args.verbose)
         print('>>>nproc:     ',args.nproc)
+        print('>>>plane_parallel',plane_parallel)
         print('++++End of arguments+++')
         
         vlidort = SBG_VLIDORT(inFile,outFile,argsFile,mtFile,
@@ -1066,6 +1074,7 @@ if __name__ == "__main__":
                             brdfFile=brdfFile,
                             verbose=args.verbose,
                             do_vlidort=do_vlidort,
+                            plane_parallel=plane_parallel,
                             nproc=args.nproc)
 
 
