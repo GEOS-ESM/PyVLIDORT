@@ -331,6 +331,7 @@ subroutine vfzmat_Rayleigh &
 !  upwelling. [ C1/S1/C2/S2 are local, will be overwritten ]
 
    if ( do_upwelling ) then
+      vsign = - d_one
       Call vfzmat_Rotation &
        ( max_geoms, max_szas, max_vzas, max_azms, vsign, dtr,   & ! Inputs
          do_ObsGeoms, nstokes, n_geoms, n_szas, n_vzas, n_azms, & ! inputs
