@@ -1,7 +1,8 @@
 esma_set_this ()
 
 set (src_dirs vlidort_def vlidort_main/regular vlidort_main/linearized)
-set (srcs VLIDORT_Mod.F90 VLIDORT_SurfaceMod.F90 VLIDORT_AOPMod.F90 VLIDORT_ScatMod.F90 vfzmat_Rayleigh_debug_Mod.F90 vfzmat_Master_debug_mod.f90 aop_total_inputs_debug_Mod.F90)
+set (srcs VLIDORT_Mod.F90 VLIDORT_SurfaceMod.F90 VLIDORT_AOPMod.F90 VLIDORT_ScatMod.F90 VLIDORT_2SMod.F90
+          vfzmat_Rayleigh_debug_Mod.F90 vfzmat_Master_debug_mod.f90 aop_total_inputs_debug_Mod.F90)
 foreach (dir ${src_dirs})
     file (GLOB srcs_ CONFIGURE_DEPENDS ${dir}/*.[Ffc] ${dir}/*.[fF]90)
   list (APPEND srcs ${srcs_})

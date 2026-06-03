@@ -19,7 +19,7 @@
          real*8, pointer          :: omega_total_input(:)
          real*8, pointer          :: fmatrix_up(:,:,:)
          real*8, pointer          :: fmatrix_dn(:,:,:)
-
+         real*8, pointer          :: aervmoms(:,:,:)
       end type VLIDORT_aop
 
 
@@ -255,7 +255,7 @@
       real*8                                             :: clLswt
  
       real*8, dimension(0:2, 16)                         :: rayvmoms
-      real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: aervmoms
+      real*8, target, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: aervmoms
       real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: clLvmoms 
       real*8, dimension(0:MAXMOMENTS_INPUT,MAXLAYERS,16) :: clIvmoms  
 
@@ -633,6 +633,7 @@
 !     ---------------
       end do
 
+      self%AOP%aervmoms          => aervmoms
       self%AOP%deltau_vert_input => deltau_vert_input
       self%AOP%omega_total_input => omega_total_input
       self%AOP%greekmat_total_input => greekmat_total_input
