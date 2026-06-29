@@ -8,8 +8,10 @@ module TWOSTREAM_LAMBERT
     PUBLIC TWOSTREAM_Lambert_Surface
 
     contains
-subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_parallel, &
-                   ROT, depol_ratio, alpha, tau, ssa, g, pe, he, te, albedo,            &
+subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_parallel, nAng, &
+                   nPol, InAngles, ROT, depol_ratio, alpha, tau, ssa, g, pmatrix, &
+                   tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
+                   pe, he, te, albedo,            &
                    solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                    MISSING,verbose,radiance_L,reflectance_L, rc)
 !
@@ -24,16 +26,31 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
   integer,          intent(in)  :: km    ! number of levels on file
   integer,          intent(in)  :: nch   ! number of channels
   integer,          intent(in)  :: nobs  ! number of observations
-  integer,          intent(in)            :: ngeom  ! number of geometries
+  integer,          intent(in)  :: ngeom  ! number of geometries
 
   logical,          intent(in)  :: plane_parallel ! do plane parallel flag
 
+  integer, target,  intent(in)  :: nAng  ! number of phase function angles
+  integer, target,  intent(in)  :: nPol  ! number of components
+
   real*8, target,   intent(in)  :: channels(nch)    ! wavelengths [nm]
+  real*8, target,   intent(in)  :: InAngles(nAng)   ! phase matrix angles
 
 !                                                   ! --- Mie Parameters ---
   real*8, target,   intent(in)  :: tau(km,nch,nobs) ! aerosol optical depth
   real*8, target,   intent(in)  :: ssa(km,nch,nobs) ! single scattering albedo
   real*8, target,   intent(in)  :: g(km,nch,nobs)   ! asymmetry factor
+  real*8, target,   intent(in)  :: pmatrix(km,nch,nobs,nAng,nPol) !components of the scat phase matrix
+
+  real*8, target,   intent(in)  :: tauI(km,nch,nobs) ! ice cloud optical depth
+  real*8, target,   intent(in)  :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
+  real*8, target,   intent(in)  :: gI(km,nch,nobs)   ! ice cloud asymmetry factor
+  real*8, target,   intent(in)  :: pmatrixI(km,nch,nobs,nAng,nPol) !ice cloud components of the scat phase matrix
+
+  real*8, target,   intent(in)  :: tauL(km,nch,nobs) ! liquid cloud optical depth
+  real*8, target,   intent(in)  :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
+  real*8, target,   intent(in)  :: gL(km,nch,nobs)   ! liquid cloud asymmetry factor
+  real*8, target,   intent(in)  :: pmatrixL(km,nch,nobs,nAng,nPol) !liquid cloud components of the scat phase matrix
 
   real*8, target,   intent(in) :: alpha(km,nobs,nch) ! trace gas absorption
   real*8, target,   intent(in) :: ROT(km,nobs,nch)  ! rayleigh optical thickness
@@ -76,11 +93,17 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
   SCAT%Surface%Base%NBEAMS            = ngeom
   SCAT%Surface%Base%N_USER_ANGLES     = ngeom
   SCAT%Surface%Base%N_USER_RELAZMS    = ngeom
+
+  SCAT%N_InAngles    = nAng
+  SCAT%InAngles => InAngles
+
   call TWOSTREAM_Init( SCAT%Surface%Base, km, rc)
   if ( rc /= 0 ) then
     write(*,*) 'TWOSTREAM_Init returning with error'
     return
   endif
+
+  SCAT%nMom    = 2
 
   do j = 1, nobs
 
@@ -120,10 +143,19 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
            SCAT%wavelength = channels(i)
            SCAT%tau => tau(:,i,j)
            SCAT%ssa => ssa(:,i,j)
+           SCAT%fmatrix => pmatrix(:,i,j,:,:)
            SCAT%g => g(:,i,j)
            SCAT%alpha => alpha(:,i,j)
            SCAT%rot => rot(:,j,i)
            SCAT%depol_ratio => depol_ratio(i)
+           SCAT%tauI => tauI(:,i,j)
+           SCAT%ssaI => ssaI(:,i,j)
+           SCAT%gI => gI(:,i,j)
+           SCAT%fmatrixI => pmatrixI(:,i,j,:,:)
+           SCAT%tauL => tauL(:,i,j)
+           SCAT%ssaL => ssaL(:,i,j)
+           SCAT%gL => gL(:,i,j)
+           SCAT%fmatrixL => pmatrixL(:,i,j,:,:)
          
            call TWOSTREAM_Run (SCAT, output, ier)
 
