@@ -24,7 +24,7 @@ from py_vlidort.inputs_vlidort import INPUTS_VLIDORT
 
 
 from py_vlidort.vlidort import LAMBERTIAN_PMATRIX_run
-from py_vlidort.twostream import MODIS_BRDF_run as ts_MODIS_BRDF_run # for now, needs to be updated
+from py_vlidort.twostream import LAMBERTIAN_run as ts_LAMBERTIAN_run 
 from multiprocessing import Pool
 
 # Generic Lists of Varnames and Units
@@ -164,8 +164,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                             # Get pool of processors
                             p = Pool(self.nproc)
                             # Run TWOSTREAM
-#                            print('   - run TWOSTREAM')
-#                            self.runTWOSTREAM(p,ich,sob,args)
+                            print('   - run TWOSTREAM')
+                            self.runTWOSTREAM(p,ich,sob,args)
                             # Run VLIDORT using multiprocessing
                             print('   - run VLIDORT')
                             self.runVLIDORT(p,ich,sob,args)
@@ -376,21 +376,27 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         npts = eob - sob
 
         # Atmospheric Optical Property Arguments
-        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
+        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor = args
+
+        # albedo
+        albedo = np.array(self.albedo)
+        albedo.shape = (1,1,1)
 
         # create list of input arguments
-        args = [(channel, self.plane_parallel, rot[:,i:i+1,:], depol_ratio,
-                alpha[:,:,i:i+1],
-                tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1],
+        args = [(channel, self.plane_parallel, self.angles,
+                rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
+                tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
+                tauI[:,:,i:i+1], ssaI[:,:,i:i+1], gI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
+                tauL[:,:,i:i+1], ssaL[:,:,i:i+1], gL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
                 pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                kernel_wt[:,:,i:i+1], param[:,:,i:i+1],
+                albedo, 
                 [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
                 flux_factor,
                 MISSING,
                 self.verbose) for i in range(npts)]
 
         # run vlidort distributed across processors
-        result = p.map(ts_MODIS_BRDF_run,args)
+        result = p.map(ts_LAMBERTIAN_run,args)
 
         # initialize temporary outputs
         I = []
@@ -403,7 +409,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
             reflectance.append(reflectance_r)
         I = np.concatenate(I)
         reflectance = np.concatenate(reflectance)
-
         # store outputs
         self.ts_I[sob:eob,ich] = np.squeeze(I)
         self.ts_reflectance[sob:eob,ich] = np.squeeze(reflectance)
@@ -948,7 +953,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         ds.to_netcdf(path=self.outFile,format='NETCDF4',engine='netcdf4',encoding=encoding,unlimited_dims=['ch'])
 
         if self.verbose:
-            print(" <> wrote %d %s "%(ich,self.outFile))
+            print(" <> wrote %s "%(self.outFile))
  
 #------------------------------------ M A I N ------------------------------------
 
