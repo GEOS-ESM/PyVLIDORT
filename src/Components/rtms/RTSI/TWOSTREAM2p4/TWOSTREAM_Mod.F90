@@ -122,12 +122,14 @@ module TWOSTREAM_Mod
       !  2STREAM input structure
       TYPE TWOSTREAM
         logical     :: initialized = .false.
+        integer     :: Max_InAngles = 371  ! Maximum Number of F-matrix angles
         integer     :: NBEAMS = 1          ! Number of solar zenith angles
         integer     :: N_USER_ANGLES = 1   ! Number of Viewing zenith angles
         integer     :: N_USER_RELAZMS = 1  ! Number of relative azimuth angles
         integer     :: N_USER_LEVELS  = 1  ! Number of user-defined vertical output levels
         integer     :: N_USER_OBSGEOMS = 1 ! Number of observation geometry triplets
         logical     :: DO_PLANE_PARALLEL = .false.
+        logical     :: DO_DEBUG_INPUT = .false. ! flag to write out debug files containing TWOSTREAM inputs
 
         TYPE(TWOSTREAM_IO)      :: TSIO
       END TYPE TWOSTREAM
@@ -190,7 +192,7 @@ module TWOSTREAM_Mod
 !                         Performance Control
 !                         -------------------
       self%TSIO%DO_D2S_SCALING       = .true.  ! Include Delta-M scaling?
-      self%TSIO%DO_PENTADIAG_INVERSE = .false. ! Boundary value problem method test variable.
+      self%TSIO%DO_PENTADIAG_INVERSE = .true. ! Flag for selecting the internal pentadiagonal system solve
 
 !  Atmosphere
       self%TSIO%EARTH_RADIUS = 6371.0d0         ! Earth radius (km)
