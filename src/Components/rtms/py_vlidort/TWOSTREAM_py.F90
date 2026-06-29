@@ -77,8 +77,10 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
 
 end subroutine TWOSTREAM_BRDF_RTLS
 
-subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parallel, &
-                     ROT, depol, alpha, tau, ssa, g, pe, he, te, albedo, &
+subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parallel, nAng, &
+                     nPol, InAngles, ROT, depol, alpha, tau, ssa, g, pmatrix, &
+                     tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
+                     pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
 
@@ -94,7 +96,11 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parall
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
+    integer,          intent(in)            :: nAng  ! number of phase function moments
+    integer,          intent(in)            :: nPol  ! number of scattering matrix components
+
     real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+    real*8,           intent(in)            :: InAngles(nAng)   ! phase matrix angles
 
 !                                                   ! --- Rayleigh Parameters ---
     real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
@@ -105,13 +111,26 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parall
     real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
     real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
     real*8,           intent(in)            :: g(km,nch,nobs)   ! assymetry parameter
+    real*8,           intent(in)            :: pmatrix(km,nch,nobs,nAng,nPol) !components of the scat phase matrix
+
+  !                                                   ! --- Ice Cloud Optical Properties ---
+    real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud optical depth
+    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
+    real*8,           intent(in)            :: gI(km,nch,nobs)   ! assymetry parameter
+    real*8,           intent(in)            :: pmatrixI(km,nch,nobs,nAng,nPol) ! ice cloudcomponents of the scat phase matrix
+
+  !                                                   ! --- Liquid Cloud Optical Properties ---
+    real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud optical depth
+    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
+    real*8,           intent(in)            :: gL(km,nch,nobs)   ! assymetry parameter
+    real*8,           intent(in)            :: pmatrixL(km,nch,nobs,nAng,nPol) ! liquid cloudcomponents of the scat phase matrix
 
     real*8,           intent(in)            :: MISSING          ! MISSING VALUE
     real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
     real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
     real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
 
-    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
+    real*8,           intent(in)            :: albedo(nobs,nch)       ! surface albedo
                          
     real*8,           intent(in)            :: solar_zenith(nobs,ngeom)  
     real*8,           intent(in)            :: relat_azymuth(nobs,ngeom) 
@@ -126,8 +145,10 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parall
     real*8,           intent(out)           :: reflectance_TS_SURF(nobs, nch,ngeom) ! TOA reflectance from TWOSTREAM using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    call TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_parallel, &
-                                   ROT, depol, alpha, tau, ssa, g, pe, he, te, &
+    call TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_parallel, nAng, &
+                                   nPol, InAngles, ROT, depol, alpha, tau, ssa, g, pmatrix, &
+                                   tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
+                                   pe, he, te, &
                                    albedo, &
                                    solar_zenith, &
                                    relat_azymuth, &
