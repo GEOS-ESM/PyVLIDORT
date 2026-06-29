@@ -105,6 +105,23 @@
       INTEGER, PARAMETER :: dp = KIND( 1.0D0 )
       INTEGER, parameter :: one = 1.0d0
       REAL(kind=dp), parameter  :: TAYLOR_SMALL = 1.0d-03
+
+!  Real number type definitions
+
+      INTEGER, PARAMETER :: FPK = SELECTED_REAL_KIND(15)
+
+!  numbers
+!  =======
+
+      DOUBLE PRECISION, PARAMETER :: &
+        ZERO = 0.0D0, TWO = 2.0D0
+      DOUBLE PRECISION, PARAMETER :: &
+        QUARTER = 0.25D0, HALF = 0.5D0
+      DOUBLE PRECISION, PARAMETER :: &
+        DEG_TO_RAD = 1.7453292519943D-02
+      DOUBLE PRECISION, PARAMETER :: &
+        PIE = 180.0D0*DEG_TO_RAD
+
 !  End of file.
 
       END MODULE twostream_pars
