@@ -7,8 +7,11 @@
 !.............................................................................
 
 
-subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, nkernel,nparam, &
-                     ROT, depol, alpha, tau, ssa, g, pe, he, te, kernel_wt, param, &
+subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, nAng, &
+                     nPol, nkernel,nparam, &
+                     InAngles, ROT, depol, alpha, tau, ssa, g, pmatrix, &
+                     tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
+                     pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
                      MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
 
@@ -24,10 +27,14 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
 
+    integer,          intent(in)            :: nAng  ! number of phase function moments
+    integer,          intent(in)            :: nPol  ! number of scattering matrix components
+
     integer,          intent(in)            :: nkernel ! number of kernels
     integer,          intent(in)            :: nparam  ! number of kernel parameters
                     
     real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+    real*8,           intent(in)            :: InAngles(nAng)   ! phase matrix angles
 
   !                                                   ! --- Rayleigh Parameters ---
     real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
@@ -38,6 +45,19 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
     real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
     real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
     real*8,           intent(in)            :: g(km,nch,nobs)   ! assymetry parameter
+    real*8,           intent(in)            :: pmatrix(km,nch,nobs,nAng,nPol) !components of the scat phase matrix
+
+  !                                                   ! --- Ice Cloud Optical Properties ---
+    real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud optical depth
+    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
+    real*8,           intent(in)            :: gI(km,nch,nobs)   ! assymetry parameter
+    real*8,           intent(in)            :: pmatrixI(km,nch,nobs,nAng,nPol) ! ice cloudcomponents of the scat phase matrix
+
+  !                                                   ! --- Liquid Cloud Optical Properties ---
+    real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud optical depth
+    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
+    real*8,           intent(in)            :: gL(km,nch,nobs)   ! assymetry parameter
+    real*8,           intent(in)            :: pmatrixL(km,nch,nobs,nAng,nPol) ! liquid cloudcomponents of the scat phase matrix
 
     real*8,           intent(in)            :: MISSING          ! MISSING VALUE
     real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
@@ -58,12 +78,14 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
     integer,          intent(in)            :: verbose
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_TS_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_TS_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+    real*8,           intent(out)           :: radiance_TS_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_TS_SURF(nobs, nch,ngeom) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    call TWOSTREAM_BRDF_LandMODIS (km, nch, nobs, ngeom, channels, plane_parallel, &
-                                   ROT, depol, alpha, tau, ssa, g, pe, he, te, &
+    call TWOSTREAM_BRDF_LandMODIS (km, nch, nobs, ngeom, channels, plane_parallel, nAng, &
+                                   nPol, InAngles, ROT, depol, alpha, tau, ssa, g, pmatrix, &
+                                   tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
+                                   pe, he, te, &
                                    kernel_wt, param, &
                                    solar_zenith, &
                                    relat_azymuth, &
