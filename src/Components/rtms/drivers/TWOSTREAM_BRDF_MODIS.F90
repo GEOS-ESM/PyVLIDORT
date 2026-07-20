@@ -22,7 +22,7 @@ module TWOSTREAM_BRDF_MODIS
                      tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose,radiance_L_SURF,reflectance_L_SURF, rc )
+                     MISSING,verbose,debug,radiance_L_SURF,reflectance_L_SURF, rc )
   !
   ! Uses TWOSTREAM to compute TOA radiances.
   !
@@ -84,6 +84,7 @@ module TWOSTREAM_BRDF_MODIS
     real*8,           intent(in)  :: flux_factor(nch) ! solar flux (F0)
     
     integer,          intent(in)  :: verbose
+    logical,          intent(in)  :: debug
 
   ! !OUTPUT PARAMETERS:
 
@@ -101,6 +102,7 @@ module TWOSTREAM_BRDF_MODIS
     ier = 0
 
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+    SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
     SCAT%Surface%Base%NBEAMS            = ngeom
     SCAT%Surface%Base%N_USER_ANGLES     = ngeom

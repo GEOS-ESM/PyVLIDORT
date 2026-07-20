@@ -45,7 +45,7 @@ subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_pa
                      InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
 
     use VLIDORT_BRDF_MODIS, only: VLIDORT_LandMODIS_pmatrix
     implicit None
@@ -109,6 +109,7 @@ subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_pa
 
     real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -130,7 +131,7 @@ subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_pa
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose,debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
                                    BR, Q, U, BR_Q, BR_U, rc )
@@ -143,7 +144,7 @@ subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_paral
                      ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
 
     use VLIDORT_BRDF_MODIS, only: VLIDORT_LandMODIS_pmom
     implicit None
@@ -206,6 +207,7 @@ subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_paral
 
     real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -227,7 +229,7 @@ subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_paral
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose,debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
                                    BR, Q, U, BR_Q, BR_U, rc )
@@ -397,7 +399,7 @@ subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel
                      nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
 
     use VLIDORT_LAMBERT, only: VLIDORT_Lambert_pmom
     implicit None
@@ -452,6 +454,7 @@ subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel
     real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -470,7 +473,7 @@ subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose, debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
                                    Q, U, rc )
@@ -482,7 +485,7 @@ subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_paral
                      nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
 
     use VLIDORT_LAMBERT, only: VLIDORT_Lambert_pmatrix
     implicit None
@@ -538,6 +541,7 @@ subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_paral
     real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -556,7 +560,7 @@ subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_paral
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose,debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
                                    Q, U, rc )

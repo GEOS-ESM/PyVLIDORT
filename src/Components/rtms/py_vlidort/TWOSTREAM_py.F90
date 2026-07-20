@@ -13,7 +13,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
                      tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
+                     MISSING,verbose,debug, radiance_TS_SURF,reflectance_TS_SURF, rc)
 
     use TWOSTREAM_BRDF_MODIS, only: TWOSTREAM_BRDF_LandMODIS  
     implicit None
@@ -76,6 +76,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
     real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_TS_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -91,7 +92,7 @@ subroutine TWOSTREAM_BRDF_RTLS(km, nch, nobs, ngeom, channels, plane_parallel, n
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose, debug, &
                                    radiance_TS_SURF, &
                                    reflectance_TS_SURF, &
                                    rc )  
@@ -104,7 +105,7 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parall
                      tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_TS_SURF,reflectance_TS_SURF, rc)
+                     MISSING,verbose,debug, radiance_TS_SURF,reflectance_TS_SURF, rc)
 
     use TWOSTREAM_LAMBERT, only: TWOSTREAM_Lambert_Surface
     implicit None
@@ -161,6 +162,7 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parall
     real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_TS_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from TWOSTREAM using surface module
@@ -176,7 +178,7 @@ subroutine TWOSTREAM_LAMBERT_DRIVER(km, nch, nobs, ngeom, channels, plane_parall
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose, debug, &
                                    radiance_TS_SURF, &
                                    reflectance_TS_SURF, &
                                    rc )  

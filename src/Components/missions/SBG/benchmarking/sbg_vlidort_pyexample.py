@@ -71,6 +71,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
     plane_parallel: use plane_parallel assumption in vlidort
     brdfFile      : string template for file with brdf parameters
     verbose       : write debugging outputs
+    debug         : write debug files
     """
     def __init__(self,inFile,outFile,argsFile,mtFile,albedoType,
                 instname,dryrun,
@@ -79,25 +80,18 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 brdfFile=None,
                 do_vlidort=True,
                 verbose=False,
+                debug=False,
                 nproc=125):
         self.SDS_AER     = SDS_AER
         self.SDS_MET     = SDS_MET
         self.SDS_INV     = SDS_INV
         self.SDS_ANG     = SDS_ANG
         self.AERNAMES    = AERNAMES
-        self.inFile      = inFile
-        self.outFile     = outFile
-        self.argsFile    = argsFile
-        self.albedoType  = albedoType
-        self.mtFile      = mtFile
-        self.verbose     = verbose
-        self.brdfFile    = brdfFile
-        self.nstreams    = nstreams
-        self.plane_parallel = plane_parallel
-        self.instname   = instname
         self.MISSING    = MISSING
-        self.nproc      = nproc
 
+        for name, value in locals().items():
+            if name != "self":
+                setattr(self,name,value)
 
         # load optics tables
         # get:
@@ -142,7 +136,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 self.initOutputs()
 
                 # Loop through channels
-                for ich,channel in enumerate(self.channels):
+                for ich,channel in enumerate(self.channels[0:1]):
                     print('ich: ',ich,' channel: ',channel)
                     # Get Rayleigh optical depth profile
                     self.getROT(channel)
@@ -428,7 +422,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
                 flux_factor,
                 MISSING,
-                self.verbose) for i in range(npts)]
+                self.verbose,self.debug) for i in range(npts)]
 
         # run vlidort distributed across processors
         result = p.map(ts_MODIS_BRDF_run,args)
@@ -482,7 +476,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
                 [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
                 flux_factor,
                 MISSING,
-                self.verbose) for i in range(npts)]
+                self.verbose,self.debug) for i in range(npts)]
 
         # run vlidort distributed across processors
         result = p.map(MODIS_BRDF_PMATRIX_run,args)
@@ -1048,6 +1042,9 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose",action="store_true",
                         help="Verbose mode (default=False).")
 
+    parser.add_argument("--debug",action="store_true",
+                        help="Debug mode (default=False).")
+
     parser.add_argument("-r", "--dryrun",action="store_true",
                         help="do a dry run (default=False).")
 
@@ -1131,6 +1128,7 @@ if __name__ == "__main__":
                             args.dryrun,
                             brdfFile=brdfFile,
                             verbose=args.verbose,
+                            debug=args.debug,
                             do_vlidort=do_vlidort,
                             nproc=args.nproc)
 

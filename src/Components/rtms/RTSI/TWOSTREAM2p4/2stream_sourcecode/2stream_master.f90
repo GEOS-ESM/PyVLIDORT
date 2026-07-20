@@ -85,6 +85,7 @@ SUBROUTINE TWOSTREAM_MASTER &
           DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,     & ! Inputs
           DO_D2S_SCALING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,              & ! Inputs     !@@ 2p1
           DO_SURFACE_LEAVING, DO_SL_ISOTROPIC, DO_PENTADIAG_INVERSE,      & ! Input !@@ 2p3 6/25/14
+          DO_DEBUG_INPUT,                                                 & ! PC
           BVPINDEX, BVPSCALEFACTOR, TAYLOR_ORDER, TAYLOR_SMALL,           & ! Input !@@ 2p3 6/25/14, 8/15/14
           NLAYERS, NTOTAL, STREAM_VALUE, N_USER_OBSGEOMS, USER_OBSGEOMS,  & ! Inputs     !@@ 2p1
           N_USER_STREAMS, USER_ANGLES, N_USER_RELAZMS, USER_RELAZMS,      & ! Inputs
@@ -291,6 +292,9 @@ SUBROUTINE TWOSTREAM_MASTER &
 
       REAL(kind=dp), INTENT(IN) ::  SLTERM_F_0 ( 0:1, MAXBEAMS )
 
+!  Debug 
+      LOGICAL, INTENT(IN) ::  DO_DEBUG_INPUT
+
 !  Exact Surface-Leaving term
 !      REAL(kind=dp) ::  SLTERM_USERANGLES ( MAX_USER_STREAMS, MAX_USER_RELAZMS, MAXBEAMS )
 !  Fourier components of Surface-leaving terms:
@@ -469,10 +473,6 @@ SUBROUTINE TWOSTREAM_MASTER &
 !mick - singularity buster output
       LOGICAL          :: SBUST(6)
 
-!  Test variables
-
-!      LOGICAL          :: DO_DEBUG_INPUT=.FALSE.
-      LOGICAL          :: DO_DEBUG_INPUT=.TRUE.
 
 !  Initialize some variables
 !  -------------------------

@@ -24,7 +24,7 @@ module VLIDORT_BRDF_MODIS
                      nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc, &
+                     MISSING,verbose, debug, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc, &
                      DO_2OS_CORRECTION, DO_BOA)
   !
   ! Place holder.
@@ -90,6 +90,7 @@ module VLIDORT_BRDF_MODIS
 
     real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -120,6 +121,7 @@ module VLIDORT_BRDF_MODIS
     if (present(DO_BOA)) SCAT%DO_BOA = DO_BOA
     SCAT%Surface%Base%NSTREAMS = nstreams
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+    SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
     SCAT%Surface%Base%NBEAMS            = ngeom
     SCAT%Surface%Base%N_USER_STREAMS    = ngeom
@@ -293,7 +295,7 @@ module VLIDORT_BRDF_MODIS
                      nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc, &
+                     MISSING,verbose, debug, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc, &
                      DO_2OS_CORRECTION, DO_BOA)
   !
   ! Place holder.
@@ -360,6 +362,7 @@ module VLIDORT_BRDF_MODIS
 
     real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
     real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
@@ -390,6 +393,7 @@ module VLIDORT_BRDF_MODIS
     if (present(DO_BOA)) SCAT%DO_BOA = DO_BOA
     SCAT%Surface%Base%NSTREAMS = nstreams
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+    SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
     SCAT%Surface%Base%NBEAMS            = ngeom
     SCAT%Surface%Base%N_USER_STREAMS    = ngeom

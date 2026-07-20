@@ -442,7 +442,8 @@
           DO_MVOUT_ONLY, DO_ADDITIONAL_MVOUT,                             & 
           DO_SOLAR_SOURCES, DO_THERMAL_EMISSION, DO_SURFACE_EMISSION,     & 
           DO_D2S_SCALING, DO_BRDF_SURFACE, DO_USER_OBSGEOMS,              & 
-          DO_SURFACE_LEAVING, DO_SL_ISOTROPIC, DO_PENTADIAG_INVERSE,      & 
+          DO_SURFACE_LEAVING, DO_SL_ISOTROPIC, DO_PENTADIAG_INVERSE,      &
+          self%Surface%Base%DO_DEBUG_INPUT,                               & 
           self%Surface%Base%TSIO%BVPINDEX,                                &
           self%Surface%Base%TSIO%BVPSCALEFACTOR,                          &
           self%Surface%Base%TSIO%TAYLOR_ORDER,                            &

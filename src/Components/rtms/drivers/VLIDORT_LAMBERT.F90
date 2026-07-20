@@ -23,7 +23,7 @@ module VLIDORT_LAMBERT
                      nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor,  &
-                     MISSING,verbose,radiance_VL,reflectance_VL, Q, U, rc, &
+                     MISSING,verbose,debug,radiance_VL,reflectance_VL, Q, U, rc, &
                      DO_2OS_CORRECTION, DO_BOA)
   !
   ! Uses VLIDORT in scalar mode to compute OMI aerosol TOA radiances.
@@ -84,6 +84,7 @@ module VLIDORT_LAMBERT
     real*8,           intent(in)  :: flux_factor(nch) ! solar flux (F0)
     
     integer,          intent(in)  :: verbose
+    logical,          intent(in)  :: debug
 
   ! !OUTPUT PARAMETERS:
 
@@ -110,6 +111,7 @@ module VLIDORT_LAMBERT
     if (present(DO_BOA)) SCAT%DO_BOA = DO_BOA
     SCAT%Surface%Base%NSTREAMS = nstreams
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+    SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
     SCAT%Surface%Base%NBEAMS            = ngeom
     SCAT%Surface%Base%N_USER_STREAMS    = ngeom
@@ -239,7 +241,7 @@ module VLIDORT_LAMBERT
                      nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL, reflectance_VL, Q ,U, rc, &
+                     MISSING,verbose, debug, radiance_VL, reflectance_VL, Q ,U, rc, &
                      DO_2OS_CORRECTION, DO_BOA)
   !
   ! Place holder.
@@ -302,6 +304,7 @@ module VLIDORT_LAMBERT
     real*8, target,   intent(in)  :: albedo(nobs,nch,ngeom)       ! surface albedo
 
     integer,          intent(in)  :: verbose
+    logical,          intent(in)  :: debug
 
   ! !OUTPUT PARAMETERS:
 
@@ -328,6 +331,7 @@ module VLIDORT_LAMBERT
     if (present(DO_BOA)) SCAT%DO_BOA = DO_BOA
     SCAT%Surface%Base%NSTREAMS = nstreams
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+    SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
     SCAT%Surface%Base%NBEAMS            = ngeom
     SCAT%Surface%Base%N_USER_STREAMS   = ngeom

@@ -13,7 +13,7 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
                    tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, &
                    pe, he, te, albedo,            &
                    solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                   MISSING,verbose,radiance_L,reflectance_L, rc)
+                   MISSING,verbose,debug,radiance_L,reflectance_L, rc)
 !
 ! Uses 2STREAM to compute TOA radiance
 !
@@ -70,6 +70,7 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
   real*8, target,   intent(in)  :: albedo(nobs,nch)       ! surface albedo
   
   integer,          intent(in)  :: verbose
+  logical,          intent(in)  :: debug
 
 
 ! !OUTPUT PARAMETERS:
@@ -89,6 +90,7 @@ subroutine TWOSTREAM_Lambert_Surface (km, nch, nobs, ngeom, channels, plane_para
   ier = 0
 
   SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
+  SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
   SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
   SCAT%Surface%Base%NBEAMS            = ngeom
   SCAT%Surface%Base%N_USER_ANGLES     = ngeom
