@@ -23,8 +23,12 @@ import yaml
 from py_vlidort.inputs_vlidort import INPUTS_VLIDORT
 
 
-from py_vlidort.vlidort import LAMBERTIAN_PMATRIX_run
-from py_vlidort.twostream import LAMBERTIAN_run as ts_LAMBERTIAN_run 
+from py_vlidort.vlidort import LAMBERTIAN_PMATRIX_run as vl_run
+from py_vlidort.vlidort import vl_pack_args_LAMB as vl_pack_args
+from py_vlidort.vlidort import vl_unpack_result
+from py_vlidort.twostream import LAMBERTIAN_run as ts_run 
+from py_vlidort.twostream import ts_pack_args_LAMB as ts_pack_args
+from py_vlidort.twostream import ts_unpack_result
 from multiprocessing import Pool
 
 # Generic Lists of Varnames and Units
@@ -87,7 +91,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         self.SDS_INV     = SDS_INV
         self.SDS_ANG     = SDS_ANG
         self.AERNAMES    = AERNAMES
-        self.MISSING     MISSING
+        self.MISSING     = MISSING
 
         for name, value in locals().items():
             if name != "self":
@@ -360,8 +364,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         """
         Calls TWOSTREAM
         """
-        # Get pool of processors
-        p = Pool(self.nproc)
 
         # get wavlength
         channel = [self.channels[ich]]
@@ -370,46 +372,22 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         eob = min([self.nobs,sob + self.nbatch])
         npts = eob - sob
 
-        # Atmospheric Optical Property Arguments
-        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor = args
-
-        # albedo
+        # create list of input arguments
         albedo = np.array(self.albedo)
         albedo.shape = (1,1,1)
+        args += (albedo,)
+        packed_args = ts_pack_args(self,channel,args,npts)
 
-        # create list of input arguments
-        args = [(channel, self.plane_parallel, self.angles,
-                rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
-                tau[:,:,i:i+1], ssa[:,:,i:i+1], g[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
-                tauI[:,:,i:i+1], ssaI[:,:,i:i+1], gI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
-                tauL[:,:,i:i+1], ssaL[:,:,i:i+1], gL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
-                pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                albedo, 
-                [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
-                flux_factor,
-                MISSING,
-                self.verbose, self.debug) for i in range(npts)]
+        # run twostream distributed across processors
+        result = p.map(ts_run,packed_args)
 
-        # run vlidort distributed across processors
-        result = p.map(ts_LAMBERTIAN_run,args)
+        # unpack result
+        I, reflectance = ts_unpack_result(result)
 
-        # initialize temporary outputs
-        I = []
-        reflectance = []
-
-        # reshape outputs
-        for r in result:
-            I_r,reflectance_r = r
-            I.append(I_r)
-            reflectance.append(reflectance_r)
-        I = np.concatenate(I)
-        reflectance = np.concatenate(reflectance)
         # store outputs
         self.ts_I[sob:eob,ich] = np.squeeze(I)
         self.ts_reflectance[sob:eob,ich] = np.squeeze(reflectance)
 
-        # close pool of processors
-        p.close()
 
     #---
     def runVLIDORT(self,p,ich,sob,args):
@@ -424,58 +402,20 @@ class SBG_VLIDORT(INPUTS_VLIDORT):
         eob = min([self.nobs,sob + self.nbatch])
         npts = eob - sob
 
-        # Atmospheric Optical Property Inputs
-        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor = args
-      
         # vector or scalar
         NSTOKES = 3
 
-        # albedo
-        albedo = np.array(self.albedo)
-        albedo.shape = (1,1,1) 
- 
         # create list of input arguments
-        args = [(channel, self.nstreams, self.plane_parallel,NSTOKES,self.angles,
-                rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
-                tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
-                tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
-                tauL[:,:,i:i+1], ssaL[:,:,i:i+1], pmatrixL[:,:,i:i+1,:,:],
-                pe[:,i:i+1], ze[:,i:i+1], te[:,i:i+1],
-                albedo,
-                [sza[i:i+1]], [raa[i:i+1]], [vza[i:i+1]],
-                flux_factor,
-                MISSING,
-                self.verbose, self.debug) for i in range(npts)]
+        albedo = np.array(self.albedo)
+        albedo.shape = (1,1,1)
+        args += (albedo,)
+        packed_args = vl_pack_args(self,channel,args,NSTOKES,npts)
 
         # run vlidort distributed across processors
-        result = p.map(LAMBERTIAN_PMATRIX_run,args)
+        result = p.map(vl_run,packed_args)
 
-        # initialize temporary outputs
-        I = []
-        Q = []
-        U = []
-        reflectance = []
-        surf_reflectance = []
-        BR_Q = []
-        BR_U = []
-       
-        # reshape outputs  
-        for r in result:
-            I_r,Q_r,U_r,reflectance_r,surf_reflectance_r,BR_Q_r,BR_U_r = r
-            I.append(I_r)
-            Q.append(Q_r)
-            U.append(U_r)
-            reflectance.append(reflectance_r)
-            surf_reflectance.append([self.albedo])
-            BR_Q.append([0.0])
-            BR_U.append([0.0])
-        I = np.concatenate(I)
-        Q = np.concatenate(Q)
-        U = np.concatenate(U)
-        reflectance = np.concatenate(reflectance)
-        surf_reflectance = np.concatenate(surf_reflectance)
-        BR_Q = np.concatenate(BR_Q)
-        BR_U = np.concatenate(BR_U)
+        # unpack result
+        I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U = vl_unpack_result(result)
 
         # store outputs 
         self.I[sob:eob,ich] = np.squeeze(I)
