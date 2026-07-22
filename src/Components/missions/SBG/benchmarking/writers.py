@@ -2,12 +2,15 @@
 Helper writing routines
 """
 
+import os
+import numpy as np
+from py_vlidort.io_atts import ARGS_ATTS, OUT_ATTS
+import xarray as xr
 
-
-class WITERS(object):
+class WRITERS(object):
 
     #---
-    def writeArgs(self,ich,sob,eob,args):
+    def writeArgs(self,ich,sob,eob,args,surface_type):
         """
         Write out the input arguments
         """
@@ -16,8 +19,10 @@ class WITERS(object):
         os.makedirs(os.path.dirname(self.argsFile), exist_ok=True)
 
         # Atmospheric Optical Property Inputs
-        rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
-
+        if surface_type == 'RTLS':
+            rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor = args
+        elif surface_type == 'LAMBERTIAN':
+            rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor,albedo = args
 
         if (ich == 0) and (sob == 0):
             # Define global dataset coordinates
@@ -34,8 +39,8 @@ class WITERS(object):
 
             # Map variable names to (dimensions, data, attributes)
             data_vars = {
-                'wavelength':     (['ch'], [self.channels[ich]], ch_att),
-                'angle':          (['ang'], self.angles.data, ang_att),
+                'wavelength':     (['ch'], [self.channels[ich]], ARGS_ATTS['ch']),
+                'angle':          (['ang'], self.angles.data, ARGS_ATTS['ang']),
 
                 # 1-D Variables
                 'DEPOL_RATIO':    (['ch'], depol_ratio, ARGS_ATTS['depol']),
@@ -53,13 +58,17 @@ class WITERS(object):
                 'TAU':            (['lev', 'nobs', 'ch'], tau.transpose(0, 2, 1), ARGS_ATTS['tau']),
                 'SSA':            (['lev', 'nobs', 'ch'], ssa.transpose(0, 2, 1), ARGS_ATTS['ssa']),
                 'G':              (['lev', 'nobs', 'ch'], g.transpose(0, 2, 1), ARGS_ATTS['g']),
-                'RTLS_PARAM':     (['nparam', 'nobs', 'ch'], param.transpose(0, 2, 1), ARGS_ATTS['param']),
-                'RTLS_KERNEL_WT': (['nkernel', 'nobs', 'ch'], kernel_wt.transpose(0, 2, 1), ARGS_ATTS['kernel_wt']),
 
                 # 5-D Variable
                 'PMATRIX':        (['lev', 'ang', 'npol', 'nobs', 'ch'], pmatrix.transpose(0, 3, 4, 2, 1), ARGS_ATTS['pmatrix']),
             }
 
+            if surface_type == 'RTLS':
+                data_vars['RTLS_PARAM'] = (['nparam', 'nobs', 'ch'], param.transpose(0, 2, 1), ARGS_ATTS['param'])
+                data_vars['RTLS_KERNEL_WT'] = (['nkernel', 'nobs', 'ch'], kernel_wt.transpose(0, 2, 1), ARGS_ATTS['kernel_wt'])
+            elif surface_type == 'LAMBERTIAN':
+                albedo_array = np.full((self.nbatch, 1), albedo)
+                data_vars['ALBEDO'] = (['nobs', 'ch'], albedo_array, ARGS_ATTS['albedo'])
 
             # create xarray data arrays of inputs
             # ------------------------------------
@@ -83,7 +92,7 @@ class WITERS(object):
 
             # Generate encoding dictionary for everything except wavelength & angle
             vars_to_encode = [k for k in data_vars.keys() if k not in ('wavelength', 'angle')]
-            var_encoding = {"zlib": True, "_FillValue": MISSING, "dtype": "f4"}
+            var_encoding = {"zlib": True, "_FillValue": self.MISSING, "dtype": "f4"}
             encoding = {var: var_encoding for var in vars_to_encode}
 
             # Write netcdf file
@@ -173,7 +182,7 @@ class WITERS(object):
         )
 
         # Generate encoding dict
-        var_encoding = {"zlib": True, "_FillValue": MISSING, "dtype": "f4"}
+        var_encoding = {"zlib": True, "_FillValue": self.MISSING, "dtype": "f4"}
         encoding = {name: var_encoding for name in variables_map.keys()}
 
         # Write netcdf file

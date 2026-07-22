@@ -45,6 +45,7 @@ set (FILES
     benchmarking/lamb_vlidort.yaml
     benchmarking/lamb_files.yaml
     benchmarking/m2_aop.yaml
+    benchmarking/writers.py
     )
 
 install (

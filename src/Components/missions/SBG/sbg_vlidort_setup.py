@@ -135,7 +135,7 @@ def create_experiment_directory():
         # Copy script to the experiment directory.
         scripts = ["benchmarking/sbg_vlidort_pyexample.py","benchmarking/lamb_vlidort_pyexample.py",
                    "benchmarking/sbg_files.yaml","benchmarking/lamb_files.yaml","benchmarking/m2_aop.yaml",
-                   "benchmarking/lamb_vlidort.yaml"]               
+                   "benchmarking/lamb_vlidort.yaml","benchmarking/writers.py"]               
     for sc in scripts:
         config_filepath = current_directory / sc
         shutil.copy(config_filepath, experiment_directory / config_filepath.name)
@@ -165,19 +165,13 @@ def create_experiment_directory():
         print()
 
     if benchmark == 'y':
-        loc_filename = Path("benchmarking/sbg_vlidort_run.j")
+        loc_filename = [Path("benchmarking/sbg_vlidort_run.j"),Path("benchmarking/lamb_vlidort_run.j")]
     else:
-        loc_filename = Path("sbg_vlidort_run.j")
+        loc_filename = [Path("sbg_vlidort_run.j")]
     target_dir = experiment_directory
     dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
-    search_reaplace_in_file(loc_filename, target_dir, dict_words)
-
-    if benchmark == 'y':
-        loc_filename = Path("benchmarking/lamb_vlidort_run.j")
-        target_dir = experiment_directory
-        dict_words = {"@SRCDIR": str(source_directory), "@GROUPID": my_group}
-        search_reaplace_in_file(loc_filename, target_dir, dict_words)
-
+    for fname in loc_filename:
+        search_reaplace_in_file(fname, target_dir, dict_words)
 
     print()
     print("-"*70)
