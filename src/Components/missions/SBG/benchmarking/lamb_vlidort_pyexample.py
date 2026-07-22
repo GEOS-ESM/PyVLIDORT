@@ -71,8 +71,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
     mtFile        : aerosol optics tables
     albedo        : lambertian albedo value
     instname      : instrument name
-    dryrun        : set everything up but don't calculate AOPs or run VLIDORT
-    do_vlidort    : calculate AOPs but don't run VLIDORT
     nstreams      : number of vlidort streams
     plane_parallel: use plane_parallel assumption in vlidort
     brdfFile      : string template for file with brdf parameters
@@ -80,11 +78,10 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
     debug         : write debug files
     """
     def __init__(self,inFile,outFile,argsFile,mtFile,albedo,
-                instname,dryrun,
+                instname,
                 nstreams=12,
                 plane_parallel=True,
                 brdfFile=None,
-                do_vlidort=True,
                 verbose=False,
                 debug=False,
                 nproc=125):
@@ -120,65 +117,29 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
         # limit iGood to sza < 80
         self.readAngles()
 
-        if self.nobs > 0:
+        # Return if no good obs
+        if self.nobs == 0:
+            return
 
-            # Land-Sea Mask
-            # limit iGood to land pixels
-            self.LandSeaMask()     
-            self.iGood = self.iGood & self.iLand
-            self.nobs = np.sum(self.iGood) 
+        # Read and filter data
+        # make some choices here specific to bencharking
 
-            # Do only 1 batch of  pixels
-            self.nobs = self.nbatch
-            self.iGood[np.where(self.iGood)[0][self.nobs:]] = False
+        # Land-Sea Mask
+        # limit iGood to land pixels
+        self.LandSeaMask()     
+        self.iGood = self.iGood & self.iLand
+        self.nobs = np.sum(self.iGood) 
 
-            # Read in model data
-            self.readSampledGEOS() 
+        # Do only 1 batch of  pixels
+        self.nobs = self.nbatch
+        self.iGood[np.where(self.iGood)[0][self.nobs:]] = False
 
-            # Calculate P,T atmospheric profile properties needed for Rayleigh calc
-            self.getEdgeVars()
+        # Read in model data
+        # subsetting for iGood
+        self.readSampledGEOS() 
 
-            if (self.nobs > 0) and not dryrun:
-                # Initiate Output Arrays
-                vl_initOutputs(self)
-                ts_initOutputs(self)
-
-                # Loop through channels
-                for ich,channel in enumerate(self.channels[0:1]):
-                    print('ich: ',ich,' channel: ',channel)
-                    # Get Rayleigh optical depth profile
-                    self.getROT(channel)
-
-                    if do_vlidort:
-
-                        # Get the index of good obs
-                        iGood  = np.arange(len(self.iGood))[self.iGood]
-
-                        # loop through nobs in batches
-#                        for sob in range(0,self.nobs,self.nbatch):
-                        for sob in [0]:
-                            print('sob, nobs',sob, self.nobs)
-                            eob = min([self.nobs,sob + self.nbatch])
-                            iobs = iGood[sob:eob]
-                            npts = eob - sob
-
-                            # Subset inputs for batch
-                            # And get optical property inputs
-                            args  = self.getargs(ich,sob,eob,iobs,npts)
-
-                            # Get pool of processors
-                            p = Pool(self.nproc)
-                            # Run TWOSTREAM
-                            print('   - run TWOSTREAM')
-                            self.runTWOSTREAM(p,ich,sob,args)
-                            # Run VLIDORT using multiprocessing
-                            print('   - run VLIDORT')
-                            self.runVLIDORT(p,ich,sob,args)
-                            # close pool of processors
-                            p.close()
-
-                # Write outputs
-                self.writeNC()
+        # Calculate P,T atmospheric profile properties needed for Rayleigh calc
+        self.getEdgeVars()
  
     #---
     def getChannels(self):
@@ -434,18 +395,68 @@ if __name__ == "__main__":
         print('>>>verbose:   ',args.verbose)
         print('>>>nproc:     ',args.nproc)
         print('>>>plane_parallel',plane_parallel)
+        print('>>>nproc:     ',args.nproc)
         print('++++End of arguments+++')
-        
+        print('')
         vlidort = SBG_VLIDORT(inFile,outFile,argsFile,mtFile,
                             albedo, 
                             instname,
-                            args.dryrun,
                             brdfFile=brdfFile,
                             verbose=args.verbose,
                             debug=args.debug,
-                            do_vlidort=do_vlidort,
                             plane_parallel=plane_parallel,
                             nproc=args.nproc)
+
+
+        # Run VLIDORT
+        # ------------
+        if vlidort.nobs == 0:
+            print('No valid pixels found. Nothing to do.')
+            return  # or sys.exit(0), depending on script structure
+        
+        if args.dryrun:
+            print('Dry run enabled. Skipping execution.')
+            return
+
+
+        # Initiate Output Arrays
+        vl_initOutputs(vlidort)
+        ts_initOutputs(vlidort)
+
+        # Get the index of good obs
+        iGood = np.where(vlidort.iGood)[0]
+
+        with Pool(vlidort.nproc) as p:
+
+            # Loop through channels
+            # only doing the first channel for the benchmark
+            for ich,channel in enumerate(vlidort.channels[0:1]):
+                print(f'ich: {ich}  channel: {channel}')
+
+                # Get Rayleigh optical depth profile
+                vlidort.getROT(channel)
+
+                # loop through nobs in batches
+                # just doing one batch for benchmark
+                for sob in range(0,vlidort.nobs,vlidort.nbatch):
+                    print(f'sob: {sob}, nobs: {vlidort.nobs}')
+
+                    eob = min([vlidort.nobs, sob + vlidort.nbatch])
+                    iobs = iGood[sob:eob]
+                    npts = eob - sob
+
+                    # Subset inputs for batch
+                    # And get optical property inputs
+                    args  = vlidort.getargs(ich,sob,eob,iobs,npts)
+
+                    print('   - run TWOSTREAM')
+                    vlidort.runTWOSTREAM(p,ich,sob,args)
+
+                    print('   - run VLIDORT')
+                    vlidort.runVLIDORT(p,ich,sob,args)
+
+            # Write outputs
+            vlidort.writeNC()
 
 
         date += Dt
