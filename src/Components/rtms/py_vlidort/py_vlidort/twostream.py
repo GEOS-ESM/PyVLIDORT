@@ -85,3 +85,12 @@ def ts_unpack_result(result):
     reflectance = np.concatenate(reflectance)
 
     return I, reflectance
+
+#---
+def ts_initOutputs(self):
+    # Initiate output arrays
+    nch    = self.nch
+    nobs   = self.nobs
+
+    self.ts_I = np.ones([nobs,nch])*self.MISSING
+    self.ts_reflectance = np.ones([nobs,nch])*self.MISSING

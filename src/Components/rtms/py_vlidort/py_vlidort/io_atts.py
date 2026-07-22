@@ -1,11 +1,11 @@
 # input and output attributes
 from .constants import MISSING
 
-ARGS_ATTS : {
+ARGS_ATTS = {
     "ch" : {
                         "standard_name": "wavelength",
                         "long_name": "wavelength",
-                        "units"":" "nm",
+                        "units": "nm",
                         "missing_value": MISSING,
            },
     "ang" : {
@@ -98,9 +98,29 @@ ARGS_ATTS : {
                         "units": "Done",
                         "missing_value": MISSING,
             },
+    "kernel_wt" : {
+                        "standard_name": "KERNEL_WT",
+                        "long_name": "RTLS BRDF kernel weights",
+                        "units": "None",
+                        "missing_value": MISSING,
+                  },
+
+    "param" : {
+                        "standard_name": "RTLS_PARAM",
+                        "long_name": "RTLS parameters",
+                        "units": "None",
+                        "missing_value": MISSING,
+              },
+    "albedo" : {
+                        "standard_name": "ALBEDO",
+                        "long_name": "lambertian albedo",
+                        "units": "None",
+                        "missing_value": MISSING,
+              },
+
     }
 
-OUT_ATTS:  {
+OUT_ATTS =  {
         "toa" : {
                         "standard_name": "TOA Reflectance",
                         "long_name": "reflectance at the top of the atmosphere",
