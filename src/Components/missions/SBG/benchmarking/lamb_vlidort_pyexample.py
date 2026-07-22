@@ -412,11 +412,11 @@ if __name__ == "__main__":
         # ------------
         if vlidort.nobs == 0:
             print('No valid pixels found. Nothing to do.')
-            return  # or sys.exit(0), depending on script structure
+            sys.exit(0)
         
         if args.dryrun:
             print('Dry run enabled. Skipping execution.')
-            return
+            sys.exit(0)
 
 
         # Initiate Output Arrays

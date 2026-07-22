@@ -440,18 +440,18 @@ if __name__ == "__main__":
                             brdfFile=brdfFile,
                             verbose=args.verbose,
                             debug=args.debug,
-                            plane_parallel=plane_parallel
+                            plane_parallel=plane_parallel,
                             nproc=args.nproc)
 
         # Run VLIDORT
         # ------------
         if vlidort.nobs == 0:
             print('No valid pixels found. Nothing to do.')
-            return  # or sys.exit(0), depending on script structure
+            sys.exit(0)
 
         if args.dryrun:
             print('Dry run enabled. Skipping execution.')
-            return
+            sys.exit(0)
 
 
         # Initiate Output Arrays
