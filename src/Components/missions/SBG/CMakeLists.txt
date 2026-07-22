@@ -29,7 +29,6 @@ install (
 # these are executable scripts
 set (PYSCRIPTS
     benchmarking/sbg_vlidort_pyexample.py
-    benchmarking/lamb_vlidort_pyexample.py
     )
 
 install (
@@ -41,9 +40,6 @@ install (
 set (FILES
     benchmarking/sbg_vlidort_run.j
     benchmarking/sbg_files.yaml
-    benchmarking/lamb_vlidort_run.j
-    benchmarking/lamb_vlidort.yaml
-    benchmarking/lamb_files.yaml
     benchmarking/m2_aop.yaml
     benchmarking/writers.py
     )
