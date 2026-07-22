@@ -23,11 +23,20 @@ import yaml
 from py_vlidort.inputs_vlidort import INPUTS_VLIDORT
 from py_vlidort.readers import READERS
 
-from py_vlidort.vlidort import MODIS_BRDF_PMATRIX_run as vl_run
-from py_vlidort.vlidort import vl_pack_args_MODIS_BRDF as vl_pack_args
+# BRDF
+from py_vlidort.vlidort import MODIS_BRDF_PMATRIX_run as vl_run_brdf
+from py_vlidort.vlidort import vl_pack_args_MODIS_BRDF as vl_pack_args_brdf
+from py_vlidort.twostream import MODIS_BRDF_run as ts_run_brdf
+from py_vlidort.twostream import ts_pack_args_MODIS_BRDF as ts_pack_args_brdf
+
+# Lambertian
+from py_vlidort.vlidort import LAMBERTIAN_PMATRIX_run as vl_run_lamb
+from py_vlidort.vlidort import vl_pack_args_LAMB as vl_pack_args_lamb
+from py_vlidort.twostream import LAMBERTIAN_run as ts_run_lamb
+from py_vlidort.twostream import ts_pack_args_LAMB as ts_pack_args_lamb
+
+# Shared
 from py_vlidort.vlidort import vl_unpack_result, vl_initOutputs
-from py_vlidort.twostream import MODIS_BRDF_run as ts_run
-from py_vlidort.twostream import ts_pack_args_MODIS_BRDF as ts_pack_args
 from py_vlidort.twostream import ts_unpack_result, ts_initOutputs
 from py_vlidort.constants import MISSING
 from py_vlidort.io_atts import ARGS_ATTS, OUT_ATTS
@@ -79,6 +88,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
     """
     def __init__(self,inFile,outFile,argsFile,mtFile,albedoType,
                 instname,
+                albedo=None,
                 nstreams=12,
                 plane_parallel=True,
                 brdfFile=None,
@@ -124,7 +134,8 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
         # make some choices here specific to bencharking
 
         # Read in surface data
-        self.readSampledAMESBRDF()
+        if self.albedoType == 'AMES_BRDF':
+            self.readSampledAMESBRDF()
 
         # Land-Sea Mask
         # limit iGood to land pixels
@@ -213,11 +224,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
         ze   = self.ze[:,sob:eob].astype('float64')
         te   = self.te[:,sob:eob].astype('float64')
 
-
-        # Surbset surface data for good obs only. dims are [nparam,nch,nobs]
-        param     = self.RTLSparam[:,:,0:npts].astype('float64')
-        kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64').to_numpy()
-
         # subset angles for good obs only. dims are [nobs]
         vza = self.VZA[iobs].astype('float64').to_numpy()
         sza = self.SZA[iobs].astype('float64').to_numpy()
@@ -241,11 +247,18 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
         # constant for now
         flux_factor = np.ones([1]).astype('float64')
 
-        args = rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,param,kernel_wt,vza,sza,raa,flux_factor
+        if self.albedoType == 'LAMBERTIAN':
+            args = (rot, depol_ratio, alpha, tau, ssa, g, pmatrix, tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, pe, te, ze, vza, sza, raa, flux_factor)
+            self.writeArgs(ich, sob, eob, args + (self.albedo,), 'LAMBERTIAN')
+            return args
 
-        self.writeArgs(ich,sob,eob,args,'RTLS')
-
-        return args
+        elif self.albedoType == 'AMES_BRDF':
+            param = self.RTLSparam[:,:,0:npts].astype('float64')
+            kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64').to_numpy()
+            args = (rot, depol_ratio, alpha, tau, ssa, g, pmatrix, tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, pe, te, ze, param, kernel_wt, vza, sza, raa, flux_factor)
+            self.writeArgs(ich, sob, eob, args, 'RTLS')
+            return args
+        
 
     #---
     def runTWOSTREAM(self,p,ich,sob,args):
@@ -260,11 +273,19 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
         eob = min([self.nobs,sob + self.nbatch])
         npts = eob - sob
 
-        # create list of input arguments
-        packed_args = ts_pack_args(self,channel,args,npts)
-
-        # run vlidort distributed across processors
-        result = p.map(ts_run,packed_args)
+        if self.albedoType == 'LAMBERTIAN':
+            albedo = np.array(self.albedo)
+            albedo.shape = (1,1,1)
+            args += (albedo,)
+            # create list of input arguments
+            packed_args = ts_pack_args_lamb(self, channel, args, npts)
+            # run vlidort distributed across processors
+            result = p.map(ts_run_lamb, packed_args)
+        elif self.albedoType == 'AMES_BRDF':
+            # create list of input arguments
+            packed_args = ts_pack_args_brdf(self, channel, args, npts)
+            # run vlidort distributed across processors
+            result = p.map(ts_run_brdf, packed_args)
 
         # unpack result
         I, reflectance = ts_unpack_result(result)
@@ -288,12 +309,16 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
 
         # vector or scalar
         NSTOKES = 3
- 
-        # create list of input arguments
-        packed_args = vl_pack_args(self,channel,args,NSTOKES,npts)
 
-        # run vlidort distributed across processors
-        result = p.map(vl_run,packed_args)
+        if self.albedoType == 'LAMBERTIAN':
+            albedo = np.array(self.albedo)
+            albedo.shape = (1,1,1)
+            args += (albedo,)
+            packed_args = vl_pack_args_lamb(self, channel, args, NSTOKES, npts)
+            result = p.map(vl_run_lamb, packed_args)
+        elif self.albedoType == 'AMES_BRDF':
+            packed_args = vl_pack_args_brdf(self, channel, args, NSTOKES, npts)
+            result = p.map(vl_run_brdf, packed_args)
 
         # unpack result
         I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U = vl_unpack_result(result)
@@ -314,7 +339,6 @@ if __name__ == "__main__":
     # Defaults
     DT_mins   = 1
     mtFile     = 'm2_aop.yaml'
-    albedoType = None
     nproc      = 125
 
 #   Parse command line options
@@ -329,8 +353,10 @@ if __name__ == "__main__":
     parser.add_argument("inputs_yaml",
                         help="yaml file with input configuration file names")
 
-    parser.add_argument("-a","--albedotype", default=albedoType,
-                        help="albedo type keyword. default is to figure out according to channel")
+    parser.add_argument("-a","--albedoType", default="AMES_BRDF",
+                        help="albedo type keyword. (default='AMES_BRDF'). Use 'LAMBERTIAN' if passing --albedo.")
+    parser.add_argument("--albedo", type=float, default=None,
+                        help="Lambertian albedo value. Overrides albedoType to LAMBERTIAN if provided.")
 
     parser.add_argument("--mtFile",default=mtFile,
                         help="mtFile (default=%s)"%mtFile)
@@ -358,19 +384,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     mtFile         = args.mtFile
-    albedoType     = args.albedotype
     do_vlidort     = not args.novlidort
 
-    if args.do_sphericity:
-        plane_parallel = False
+    # Automatically set type to LAMBERTIAN if a specific albedo float is passed
+    if args.albedo is not None:
+        albedoType = 'LAMBERTIAN'
     else:
-        plane_parallel = True
+        albedoType = args.albedoType
 
-
-    # figure out albedoType keyword
-    if albedoType is None:
-        albedoType = 'AMES_BRDF'
-
+    plane_parallel = not args.do_sphericity
 
     config = yaml.safe_load(open(args.inputs_yaml))
     args.paths_yaml = config['paths_yaml']
@@ -409,15 +431,34 @@ if __name__ == "__main__":
         hour  = str(date.hour).zfill(2)
         minute = str(date.minute).zfill(2)
 
-        inFile     = inTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME)
-        outFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname)
-        argsFile    = outTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME).replace('%instname',instname).replace('vlidort','vlidort_args')
+        replacements = {
+            '%year': year, '%month': month, '%day': day, '%nymd': nymd,
+            '%hour': hour, '%minute': minute, '%orbitname': orbitname, 
+            '%ORBITNAME': ORBITNAME, '%instname': instname
+        }
 
-        if brdfTemplate is None:
-            brdfFile = None
+
+        inFile = inTemplate
+        outFile = outTemplate
+        argsFile = outTemplate.replace('vlidort', 'vlidort_args')
+
+        for k, v in replacements.items():
+            inFile = inFile.replace(k, v)
+            outFile = outFile.replace(k, v)
+            argsFile = argsFile.replace(k, v)
+
+        # Handle albedo string in output names if necessary
+        if args.albedo is not None:
+            outFile = outFile.replace('%albedo', str(args.albedo))
+            argsFile = argsFile.replace('%albedo', str(args.albedo))
         else:
-            brdfFile = brdfTemplate.replace('%year',year).replace('%month',month).replace('%day',day).replace('%nymd',nymd).replace('%hour',hour).replace('%minute',minute).replace('%orbitname',orbitname).replace('%ORBITNAME',ORBITNAME)
+            outFile = outFile.replace('%albedo', albedoType)
+            argsFile = argsFile.replace('%albedo', albedoType)
 
+        brdfFile = brdfTemplate
+        if brdfFile:
+            for k, v in replacements.items():
+                brdfFile = brdfFile.replace(k, v)
 
 
         # Initialize VLIDORT class getting aerosol optical properties
@@ -435,8 +476,9 @@ if __name__ == "__main__":
         print('++++End of arguments+++')
         print('') 
         vlidort = SBG_VLIDORT(inFile,outFile,argsFile,mtFile,
-                            albedoType, 
+                            albedoType,
                             instname,
+                            albedo=args.albedo,
                             brdfFile=brdfFile,
                             verbose=args.verbose,
                             debug=args.debug,
@@ -482,13 +524,13 @@ if __name__ == "__main__":
 
                     # Subset inputs for batch
                     # And get optical property inputs
-                    args  = vlidort.getargs(ich,sob,eob,iobs,npts)
+                    batch_args  = vlidort.getargs(ich,sob,eob,iobs,npts)
 
                     print('   - run TWOSTREAM')
-                    vlidort.runTWOSTREAM(p,ich,sob,args)
+                    vlidort.runTWOSTREAM(p,ich,sob,batch_args)
 
                     print('   - run VLIDORT')
-                    vlidort.runVLIDORT(p,ich,sob,args)
+                    vlidort.runVLIDORT(p,ich,sob,batch_args)
 
             # Write outputs
             vlidort.writeNC()

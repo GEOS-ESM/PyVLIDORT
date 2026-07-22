@@ -33,4 +33,9 @@ if (! -d ExtData) then
     ln -s /discover/nobackup/pcastell/workspace/GEOSmie_refactor/dustupdate/AerosolOptics/v2.0.0/x  ExtData
 endif
 
-python3 -u ./sbg_vlidort_pyexample.py --nproc=1 2006-01-16T17:35 2006-01-16T17:36  sbg_vlidort.yaml >& sbg_vlidort-${SLURM_JOB_ID}.log
+# BRDF test
+python3 -u ./sbg_vlidort_pyexample.py --nproc=1 2006-01-16T17:35 2006-01-16T17:36  sbg_vlidort.yaml 
+#>& sbg_vlidort-${SLURM_JOB_ID}.log
+
+#lambertian test
+python3 -u ./sbg_vlidort_pyexample.py --nproc=1 --albedo 0.0 2006-01-16T17:35 2006-01-16T17:36  sbg_vlidort.yaml
