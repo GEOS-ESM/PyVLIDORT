@@ -168,40 +168,6 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
         ds.close()        
 
     #---
-    def readSampledAMESBRDF(self):
-        """
-        Read in AMES BRDF kernel weights
-        that have already been sampled on swath
-        """
-        if self.verbose:
-            print('opening BRDF file ',self.brdfFile)
-        ds = xr.open_dataset(self.brdfFile,chunks="auto")
-
-        # concatenate kernel weights into one data array
-        da = xr.concat([ds.Ki,ds.Kg,ds.Kv],dim="nalong")
-        da = da.rename("kernel_wt")
-
-        # reshape to [nkernel,nch,nobs]
-        self.kernel_wt = da.squeeze().stack(nobs=("time","ncross")).transpose("nalong","nwav","nobs")
-
-        # make an array of the params, just big enough for a batch
-        param1 = np.array([2]*self.nbatch)
-        param2 = np.array([1]*self.nbatch)
-
-        #[nparam,nch,nobs]
-        param1.shape = (1,1,self.nbatch)
-        param2.shape = (1,1,self.nbatch)
-
-        # [nparam,nch,nobs]
-        self.RTLSparam = np.append(param1,param2,axis=0)
-        self.RTLSparam = self.RTLSparam.reshape(2,1,self.nbatch)
-
-        # filter for nans
-        iGood = ~np.isnan(self.kernel_wt[0,0,:])
-        self.iGood = self.iGood & iGood.values
-        self.nobs = np.sum(self.iGood)
-
-    #---
     def getargs(self,ich,sob,eob,iobs,npts):
         """
         Generic call to subset args
