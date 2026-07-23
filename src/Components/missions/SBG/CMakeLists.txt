@@ -4,6 +4,7 @@ esma_set_this()
 # these are executable scripts
 set (PYSCRIPTS
     sbg_vlidort_setup.py
+    sbg_vlidort.py
     )
 
 install (
