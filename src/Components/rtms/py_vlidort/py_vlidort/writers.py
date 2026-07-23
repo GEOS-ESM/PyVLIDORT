@@ -8,6 +8,7 @@ from py_vlidort.io_atts import ARGS_ATTS, OUT_ATTS
 import xarray as xr
 import pandas as pd
 import shutil
+from netCDF4 import Dataset as ncDataset
 class WRITERS(object):
     def expand_dimensions(self):
             """
@@ -180,7 +181,7 @@ class WRITERS(object):
                 nc.variables[name][:, sob:eob, ich] = data.transpose(0, 2, 1)
 
             # 5-D variables
-            nc.variables['PMATRIX'][:, :, :, sob:eob, ich] = pmatrix.transpose(0, 2, 3, 4, 1)
+            nc.variables['PMATRIX'][:, :, :, sob:eob, ich] = pmatrix.transpose(0, 3, 4, 2, 1)
 
             nc.close()
 
