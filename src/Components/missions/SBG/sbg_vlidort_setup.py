@@ -135,7 +135,12 @@ def create_experiment_directory():
         # Copy script to the experiment directory.
         scripts = ["benchmarking/sbg_vlidort_pyexample.py",
                    "benchmarking/sbg_files.yaml","benchmarking/m2_aop.yaml",
-                   "benchmarking/writers.py"]               
+                   "benchmarking/writers.py"]              
+    else:
+        # Copy script to the experiment directory.
+        scripts = ["sbg_vlidort.py",
+                   "sbg_vlidort.yaml","sbg_files.yaml","m2_aop.yaml","ssd650.yaml"]
+ 
     for sc in scripts:
         config_filepath = current_directory / sc
         shutil.copy(config_filepath, experiment_directory / config_filepath.name)
