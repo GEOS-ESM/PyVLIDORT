@@ -80,7 +80,7 @@ def vl_pack_args_LAMB(self,channel,args,NSTOKES,npts):
     rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor,albedo = args
 
     # create list of input arguments
-    packed_args = [(channel, self.nstreams, self.plane_parallel,NSTOKES,self.angles,
+    packed_args = [(channel, self.nstreams, self.do_fullrad, self.plane_parallel,NSTOKES,self.angles,
             rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
             tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
             tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
@@ -101,7 +101,7 @@ def vl_pack_args_MODIS_BRDF(self,channel,args,NSTOKES,npts):
 
 
     # create list of input arguments
-    packed_args = [(channel, self.nstreams, self.plane_parallel,NSTOKES,self.angles,
+    packed_args = [(channel, self.nstreams, self.do_fullrad,self.plane_parallel,NSTOKES,self.angles,
             rot[:,i:i+1,:], depol_ratio, alpha[:,:,i:i+1],
             tau[:,:,i:i+1], ssa[:,:,i:i+1], pmatrix[:,:,i:i+1,:,:],
             tauI[:,:,i:i+1], ssaI[:,:,i:i+1], pmatrixI[:,:,i:i+1,:,:],
