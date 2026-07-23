@@ -9,7 +9,16 @@
 import numpy   as np
 import xarray as xr
 
+
 class READERS(object):
+
+    ALBEDO_READER_MAP = {
+        'AMES_BRDF':  'readSampledAMESBRDF',
+        #'MODIS_BRDF': 'readSampledMODISBRDF',
+        #'LAMBERTIAN': 'readSampledLambertian',
+        # Add more as they are created
+    }
+
     #--
     def getDims(self):
         """
