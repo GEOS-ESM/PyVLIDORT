@@ -39,7 +39,6 @@ from py_vlidort.twostream import ts_pack_args_LAMB as ts_pack_args_lamb
 from py_vlidort.vlidort import vl_unpack_result, vl_initOutputs
 from py_vlidort.twostream import ts_unpack_result, ts_initOutputs
 from py_vlidort.constants import MISSING
-from py_vlidort.io_atts import ARGS_ATTS, OUT_ATTS
 from writers import WRITERS
 
 from multiprocessing import Pool
