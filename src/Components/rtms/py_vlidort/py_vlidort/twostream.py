@@ -94,3 +94,37 @@ def ts_initOutputs(self):
 
     self.ts_I = np.ones([nobs,nch])*self.MISSING
     self.ts_reflectance = np.ones([nobs,nch])*self.MISSING
+
+class TWOSTREAM(object):
+
+    #---
+    def runTWOSTREAM(self,p,ich,sob,args):
+        """
+        Calls TWOSTREAM
+        """
+
+        # get wavlength
+        channel = [self.channels[ich]]
+
+        # get last index and number of pts
+        eob = min([self.nobs,sob + self.nbatch])
+        npts = eob - sob
+
+        if self.albedoType == 'LAMBERTIAN':
+            args += (albedo,)
+            # create list of input arguments
+            packed_args = ts_pack_args_LAMB(self, channel, args, npts)
+            # run vlidort distributed across processors
+            result = p.map(LAMBERTIAN_run, packed_args)
+        elif self.albedoType == 'AMES_BRDF':
+            # create list of input arguments
+            packed_args = ts_pack_args_MODIS_BRDF(self, channel, args, npts)
+            # run vlidort distributed across processors
+            result = p.map(MODIS_BRDF_run, packed_args)
+
+        # unpack result
+        I, reflectance = ts_unpack_result(result)
+
+        # store outputs
+        self.ts_I[sob:eob,ich] = np.squeeze(I)
+        self.ts_reflectance[sob:eob,ich] = np.squeeze(reflectance)
