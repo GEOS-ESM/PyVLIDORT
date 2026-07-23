@@ -55,7 +55,8 @@
 		integer     :: N_USER_OBSGEOMS = 1 ! Number of azimuth angles calculated by surface supplement
 		logical     :: DO_PLANE_PARALLEL = .false.
         logical     :: DO_DEBUG_INPUT = .false. ! flag to write out debug files containing all VLIDORT inputs
-        logical     :: USEFMAT = .true.    !flat to use direct F-matrix inputs 
+        logical     :: USEFMAT = .true.    !flat to use direct F-matrix inputs
+        logical     :: DO_FULLRAD_MODE = .true.  ! Do full Stokes vector calculation?  If false, returns single scatter 
 		type(VLIDORT_IO) :: VIO
 
 	      END TYPE VLIDORT
@@ -172,7 +173,7 @@
 !                         Modes of Operation
 !                         ------------------
 
-      DO_FULLRAD_MODE    = .true.  ! Do full Stokes vector calculation?  If false, and DO_FOCORR is true, returns single scatter
+      DO_FULLRAD_MODE    = self%DO_FULLRAD_MODE  ! Do full Stokes vector calculation?  If false, and DO_FOCORR is true, returns single scatter
       DO_FOCORR_NADIR    = .false. ! Do nadir single scatter correction? only the incoming solar beam is treated in spherical geometry
       if (self%DO_PLANE_PARALLEL) then
           ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
@@ -212,7 +213,11 @@
 !                         -------------------
 
       DO_RAYLEIGH_ONLY     = .false. ! Rayleigh atmosphere only?
-      DO_DELTAM_SCALING    = .true.  ! Include Delta-M scaling?
+      if (DO_FULLRAD_MODE) then
+          DO_DELTAM_SCALING    = .true.  ! Include Delta-M scaling?
+      else
+          DO_DELTAM_SCALING    = .false. ! turn off if doing SS only
+      end if
       DO_SSCORR_TRUNCATION = .false. ! Additional Delta-M scaling for SS correction? SHOULD ALWAYS BE FALSE
       DO_SOLUTION_SAVING   = .false. ! Solution saving mode?
       DO_BVP_TELESCOPING   = .false. ! Boundary value problem telescoping mode?

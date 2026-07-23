@@ -81,6 +81,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
     instname      : instrument name
     nstreams      : number of vlidort streams
     plane_parallel: use plane_parallel assumption in vlidort
+    do_fullrad    : do SS+MS, if false do SS only
     brdfFile      : string template for file with brdf parameters
     verbose       : write debugging outputs
     debug         : write debug files
@@ -90,6 +91,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS):
                 albedo=None,
                 nstreams=12,
                 plane_parallel=True,
+                do_fullrad=True,
                 brdfFile=None,
                 verbose=False,
                 debug=False,
@@ -329,6 +331,9 @@ if __name__ == "__main__":
     parser.add_argument("--do_sphericity",action="store_true",
                         help="use spherical atmosphere in VLIDORT")
 
+    parser.add_argument("--do_fullrad",action="store_true",
+                        help="do both SS and MS. Default is SS only")
+
     parser.add_argument("-D","--DT_mins", default=DT_mins, type=int,
                         help="Timestep in minutes for each file (default=%i)"%DT_mins)
 
@@ -448,6 +453,7 @@ if __name__ == "__main__":
                             verbose=args.verbose,
                             debug=args.debug,
                             plane_parallel=plane_parallel,
+                            do_fullrad=args.do_fullrad,
                             nproc=args.nproc)
 
         # Run VLIDORT

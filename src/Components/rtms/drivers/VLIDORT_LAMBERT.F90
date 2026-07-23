@@ -19,7 +19,7 @@ module VLIDORT_LAMBERT
     return
   end function IS_MISSING
 
-  subroutine VLIDORT_Lambert_pmom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, &
+  subroutine VLIDORT_Lambert_pmom (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
                      nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor,  &
@@ -42,6 +42,7 @@ module VLIDORT_LAMBERT
     integer,          intent(in)  :: ngeom  ! number of geometries
 
     logical,          intent(in)  :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)  :: do_fullrad ! do both SS and MS, if false does SS only
                                         
     integer, target,  intent(in)  :: nMom             ! number of phase function moments     
     integer, target,  intent(in)  :: nPol  ! number of scattering matrix components                               
@@ -110,6 +111,7 @@ module VLIDORT_LAMBERT
 
     if (present(DO_BOA)) SCAT%DO_BOA = DO_BOA
     SCAT%Surface%Base%NSTREAMS = nstreams
+    SCAT%Surface%Base%DO_FULLRAD_MODE   = do_fullrad
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
     SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom
@@ -237,7 +239,7 @@ module VLIDORT_LAMBERT
 
   !..........................................................................
 
-  subroutine VLIDORT_Lambert_pmatrix (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng,  &
+  subroutine VLIDORT_Lambert_pmatrix (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng,  &
                      nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -259,6 +261,7 @@ module VLIDORT_LAMBERT
     integer,          intent(in)  :: nobs  ! number of observations
     integer,          intent(in)  :: ngeom  ! number of geometries
 
+    logical,          intent(in)  :: do_fullrad ! do both SS and MS, if false does SS only
     logical,          intent(in)  :: plane_parallel ! do plane parallel flag
 
     integer, target,  intent(in)  :: nAng  ! number of phase function angles
@@ -330,6 +333,7 @@ module VLIDORT_LAMBERT
     ier = 0
     if (present(DO_BOA)) SCAT%DO_BOA = DO_BOA
     SCAT%Surface%Base%NSTREAMS = nstreams
+    SCAT%Surface%Base%DO_FULLRAD_MODE   = do_fullrad
     SCAT%Surface%Base%DO_PLANE_PARALLEL = plane_parallel
     SCAT%Surface%Base%DO_DEBUG_INPUT    = debug
     SCAT%Surface%Base%N_USER_OBSGEOMS   = ngeom

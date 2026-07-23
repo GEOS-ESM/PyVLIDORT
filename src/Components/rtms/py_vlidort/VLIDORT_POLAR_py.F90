@@ -41,7 +41,7 @@ subroutine ROT_CALC(km, nch, nobs, channels, pe, he, te, &
 end subroutine ROT_CALC
 
 
-subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng, nPol, NSTOKES, nkernel,nparam, &
+subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, nPol, NSTOKES, nkernel,nparam, &
                      InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -58,6 +58,7 @@ subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_pa
     integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
     integer,          intent(in)            :: nAng  ! number of phase function angles
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
@@ -123,7 +124,7 @@ subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_pa
     real*8,           intent(out)           :: BR_U(nobs, nch, ngeom)                ! Stokes parameter U
 
 
-    call VLIDORT_LandMODIS_pmatrix (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng, &
+    call VLIDORT_LandMODIS_pmatrix (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, &
                                    nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                                    pe, he, te, &
                                    kernel_wt, param, &
@@ -140,7 +141,7 @@ subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_pa
 end subroutine BRDF_MODIS_PMATRIX
 
 
-subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, nPol, NSTOKES, nkernel,nparam, &
+subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, nPol, NSTOKES, nkernel,nparam, &
                      ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -157,6 +158,7 @@ subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_paral
     integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
     integer,          intent(in)            :: nMom  ! number of phase function moments
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
@@ -221,7 +223,7 @@ subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_paral
     real*8,           intent(out)           :: BR_U(nobs, nch,ngeom)                ! Stokes parameter U
 
 
-    call VLIDORT_LandMODIS_pmom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, &
+    call VLIDORT_LandMODIS_pmom (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
                                    nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                                    pe, he, te, &
                                    kernel_wt, param, &
@@ -395,7 +397,7 @@ end subroutine BRDF_MODIS_PMOM
 !end subroutine VECTOR_BPDF
 !
 !
-subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, &
+subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
                      nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -412,6 +414,7 @@ subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel
     integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
     integer,          intent(in)            :: nMom  ! number of phase function moments
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
@@ -465,7 +468,7 @@ subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel
     real*8,           intent(out)           :: U(nobs,nch,ngeom)                   ! Stokes parameter U
 
 
-    call VLIDORT_Lambert_pmom (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nMom, &
+    call VLIDORT_Lambert_pmom (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
                                    nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                                    pe, he, te, &
                                    albedo, &
@@ -481,7 +484,7 @@ subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, plane_parallel
 
 end subroutine LAMBERT_PMOM
 
-subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng, &
+subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, &
                      nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
@@ -498,6 +501,7 @@ subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_paral
     integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
     integer,          intent(in)            :: nAng  ! number of phase function moments
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
@@ -552,7 +556,7 @@ subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, plane_paral
     real*8,           intent(out)           :: U(nobs,nch,ngeom)                   ! Stokes parameter U
 
 
-    call VLIDORT_Lambert_pmatrix (km, nch, nobs, ngeom, channels, nstreams, plane_parallel, nAng, &
+    call VLIDORT_Lambert_pmatrix (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, &
                                    nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                                    pe, he, te, &
                                    albedo, &
