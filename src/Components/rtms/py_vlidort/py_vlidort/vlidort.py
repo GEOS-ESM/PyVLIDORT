@@ -168,3 +168,38 @@ def get_chd(channel):
     chd = chd.replace('.','d')
 
     return chd
+
+class VLIDORT(object):
+    #---
+    def runVLIDORT(self,p,ich,sob,args):
+        """
+        Calls VLIDORT
+        """
+
+        # get wavlength
+        channel = [self.channels[ich]]
+
+        # get last ob and number of pts
+        eob = min([self.nobs,sob + self.nbatch])
+        npts = eob - sob
+
+        if self.albedoType == 'LAMBERTIAN':
+            args += (albedo,)
+            packed_args = vl_pack_args_LAMB(self, channel, args, self.NSTOKES, npts)
+            result = p.map(LAMBERTIAN_PMATRIX_run, packed_args)
+        elif self.albedoType == 'AMES_BRDF':
+            packed_args = vl_pack_args_MODIS_BRDF(self, channel, args, self.NSTOKES, npts)
+            result = p.map(MODIS_BRDF_PMATRIX_run, packed_args)
+
+        # unpack result
+        I,Q,U,reflectance,surf_reflectance,BR_Q,BR_U = vl_unpack_result(result)
+
+        # store outputs
+        self.I[sob:eob,ich] = np.squeeze(I)
+        self.reflectance[sob:eob,ich] = np.squeeze(reflectance)
+        self.surf_reflectance[sob:eob,ich] = np.squeeze(surf_reflectance)
+        self.Q[sob:eob,ich] = np.squeeze(Q)
+        self.U[sob:eob,ich] = np.squeeze(U)
+        self.BR_Q[sob:eob,ich] = np.squeeze(BR_Q)
+        self.BR_U[sob:eob,ich] = np.squeeze(BR_U)
+
