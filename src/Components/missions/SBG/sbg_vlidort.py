@@ -66,7 +66,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
     argsFile      : where to write vlidort inputs
     mtFile        : aerosol optics tables
     NSTOKES       : number stokes vector elements
-    albedoTypes   : list of surface model types to use
+    albedoType    : list of surface model types to use
     instname      : instrument name
     nstreams      : number of vlidort streams
     plane_parallel: use plane_parallel assumption in vlidort
@@ -74,7 +74,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
     verbose       : write debugging outputs
     debug         : write debug files
     """
-    def __init__(self,inFile,outFile,argsFile,mtFile,albedoTypes,
+    def __init__(self,inFile,outFile,argsFile,mtFile,albedoType,
                 instname,
                 NSTOKES=3,
                 albedo=None,
@@ -122,21 +122,18 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
         # Read and filter data
         # make some choices here specific to SBG
 
-        # Read in surface data
-        # Loop through list of albedo types
-        for atype in self.albedoTypes:
+        # Read in surface data            
+        # Get the string name of the function from the inherited map
+        method_name = self.ALBEDO_READER_MAP.get(albedoType)
             
-            # Get the string name of the function from the inherited map
-            method_name = self.ALBEDO_READER_MAP.get(atype)
+        if method_name:
+            # Get the actual function object using getattr
+            reader_func = getattr(self, method_name)
             
-            if method_name:
-                # Get the actual function object using getattr
-                reader_func = getattr(self, method_name)
-                
-                # 3. Call the function
-                reader_func() 
-            else:
-                print(f"Warning: No reader mapped for albedo type '{atype}'")
+            # Call the function
+            reader_func() 
+        else:
+            print(f"Warning: No reader mapped for albedo type '{atype}'")
 
         # Land-Sea Mask
         # limit iGood to land pixels
@@ -257,7 +254,7 @@ if __name__ == "__main__":
     config = yaml.safe_load(open(args.inputs_yaml))
 
     mtFile = config.get('MTFILE','m2_aop.yaml')
-    albedoTypes = config.get('ALBEDOTYPES',['AMES_BRDF'])
+    albedoType = config.get('ALBEDOTYPE','AMES_BRDF')
     plane_parallel = not config.get('DO_SPHERICITY',False)
     NSTOKES = config.get('NSTOKES',3)
 
@@ -279,10 +276,7 @@ if __name__ == "__main__":
     outTemplate    = cf['outDir']    + '/' + cf['outFile']
     DT_mins        = cf.get('DT_MINS',1)
 
-    try:
-        brdfTemplate = cf['brdfDir'] + '/' + cf['brdfFile']
-    except:
-        brdfTemplate = None
+    brdfTemplate = cf['brdfDir'] + '/' + cf['brdfFile']
 
 
     # Loop through dates, running VLIDORT
@@ -309,7 +303,7 @@ if __name__ == "__main__":
         inFile = inTemplate
         outFile = outTemplate
         argsFile = outTemplate.replace('vlidort', 'vlidort_args')
-
+        brdfFile = brdfTemplate
         for k, v in replacements.items():
             inFile = inFile.replace(k, v)
             outFile = outFile.replace(k, v)
@@ -323,7 +317,7 @@ if __name__ == "__main__":
         print('>>>outFile:   ',outFile)
         print('>>>argsFile:  ',argsFile)
         print('>>>mtFile:    ',mtFile)
-        print('>>>albedoTypes:',albedoTypes)
+        print('>>>albedoType:',albedoType)
         print('>>>brdfFile:  ',brdfFile)
         print('>>>verbose:   ',args.verbose)
         print('>>>plane_parallel',plane_parallel)
@@ -331,7 +325,7 @@ if __name__ == "__main__":
         print('++++End of arguments+++')
         print('') 
         vlidort = SBG_VLIDORT(inFile,outFile,argsFile,mtFile,
-                            albedoTypes,
+                            albedoType,
                             instname,
                             NSTOKES=NSTOKES,
                             brdfFile=brdfFile,
