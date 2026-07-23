@@ -1,3 +1,9 @@
 paths_yaml: sbg_files.yaml
 inst_yaml: sbg.yaml
 orbit_yaml: ssd650.yaml
+
+NSTOKES: 3
+DO_SPHERICITY: False
+ALBEDOTYPES: 
+    - AMES_BRDF
+MTFILE: 'm2_aop.yaml'
