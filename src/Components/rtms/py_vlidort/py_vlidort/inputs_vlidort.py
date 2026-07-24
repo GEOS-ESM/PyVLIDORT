@@ -40,7 +40,7 @@ class INPUTS_VLIDORT(G2GAOP):
         ROT: [nlev,npts,nch]
         depol_ratio: [nch]
         """
-        args = [wavelength, self.pe.astype('float64'), self.ze.astype('float64'), self.te.astype('float64'), self.MISSING, self.verbose]
+        args = [wavelength, self.EDGES.pe.astype('float64'), self.EDGES.ze.astype('float64'), self.EDGES.te.astype('float64'), self.MISSING, self.verbose]
         vlidortWrapper = WrapperFuncs['ROT_CALC']
         ROT, depol_ratio, rc = vlidortWrapper(*args)        
 
