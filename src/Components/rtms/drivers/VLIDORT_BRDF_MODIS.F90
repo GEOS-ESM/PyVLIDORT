@@ -404,12 +404,13 @@ module VLIDORT_BRDF_MODIS
     SCAT%Surface%Base%N_USER_RELAZMS    = ngeom
     SCAT%Surface%Base%Max_InAngles      = nAng
     SCAT%Surface%Base%USEFMAT = .true.
+    SCAT%Surface%Base%NGREEK_MOMENTS_INPUT = nstreams*2 + 1
     call VLIDORT_Init( SCAT%Surface%Base, km, rc, SCAT%DO_BOA)
     if ( rc /= 0 ) return
 
     SCAT%N_InAngles    = nAng
     SCAT%InAngles => InAngles
-    SCAT%nMom    = SCAT%Surface%Base%NGREEK_MOMENTS_INPUT  ! using the default value
+    SCAT%nMom    = SCAT%Surface%Base%NGREEK_MOMENTS_INPUT 
     SCAT%nPol    = nPol
     if (present(DO_2OS_CORRECTION)) then
       SCAT%DO_2OS_CORRECTION = DO_2OS_CORRECTION
