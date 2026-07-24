@@ -15,7 +15,8 @@
     Patricia Castellanos, Jan 2020
 
 """
-import os
+import time
+import os,sys
 import argparse
 from   datetime        import datetime, timedelta
 from   dateutil.parser import parse         as isoparser
@@ -70,6 +71,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
     instname      : instrument name
     nstreams      : number of vlidort streams
     plane_parallel: use plane_parallel assumption in vlidort
+    do_fullrad    : do SS+MS, if false do SS only
     brdfFile      : string template for file with brdf parameters
     verbose       : write debugging outputs
     debug         : write debug files
@@ -80,6 +82,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
                 albedo=None,
                 nstreams=12,
                 plane_parallel=True,
+                do_fullrad=True,
                 brdfFile=None,
                 verbose=False,
                 debug=False,
@@ -147,6 +150,9 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
         # Calculate P,T atmospheric profile properties needed for Rayleigh calc
         self.getEdgeVars()
 
+        # Get Rayleigh optical depth profile
+        self.getROT(self.channels)
+
     #---
     def getChannels(self):
         """
@@ -162,32 +168,34 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
         ds.close()        
 
     #---
-    def getargs(self,ich,sob,eob,iobs,npts):
+    def getargs(self,ich):
         """
         Generic call to subset args
         """
         # Subset ROT for good obs only. dims are [nlev,nobs]
-        rot  = self.ROT[:,sob:eob,:]
-        depol_ratio = self.depol_ratio
+        rot  = self.rayleigh.ROT[:,:,ich:ich+1].values
+        depol_ratio = self.rayleigh.depol_ratio[ich:ich+1].values
 
-        # Subset aerosol fields for good obs only.
         # calculate AOPs dims are [nlev,nch,nobs]
-        self.aer = self.AER.isel(nobs=slice(sob,eob))
+        t1 = time.perf_counter()
         self.getpyobsAOP(self.channels[ich])
         tau  = self.tau
         ssa  = self.ssa
         pmatrix = self.pmatrix
         g    = self.g
+        t2 = time.perf_counter()
+        if self.verbose:
+            print(f"      -> getpyobsAOP took {t2-t1:.4f}s")
 
         # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
-        pe   = self.pe[:,sob:eob].astype('float64')
-        ze   = self.ze[:,sob:eob].astype('float64')
-        te   = self.te[:,sob:eob].astype('float64')
+        pe   = self.edges.pe.values.astype('float64')
+        ze   = self.edges.ze.values.astype('float64')
+        te   = self.edges.te.values.astype('float64')
 
         # subset angles for good obs only. dims are [nobs]
-        vza = self.VZA[iobs].astype('float64').to_numpy()
-        sza = self.SZA[iobs].astype('float64').to_numpy()
-        raa = self.RAA[iobs].astype('float64').to_numpy()
+        vza = self.geoms.VZA.astype('float64')
+        sza = self.geoms.SZA.astype('float64')
+        raa = self.geoms.RAA.astype('float64')
 
         # cloud properties
         # empty for now
@@ -207,10 +215,11 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
         # constant for now
         flux_factor = np.ones([1]).astype('float64')
 
-        param = self.RTLSparam[:,:,0:npts].astype('float64')
-        kernel_wt = self.kernel_wt[:,ich:ich+1,iobs].astype('float64').to_numpy()
+        # surface parameters
+        param = self.surface.RTLSparam[:,ich:ich+1,:].values.astype('float64')
+        kernel_wt = self.surface.kernel_wt[:,ich:ich+1,:].values.astype('float64')
+
         args = (rot, depol_ratio, alpha, tau, ssa, g, pmatrix, tauI, ssaI, gI, pmatrixI, tauL, ssaL, gL, pmatrixL, pe, te, ze, param, kernel_wt, vza, sza, raa, flux_factor)
-        self.writeArgs(ich, sob, eob, args, 'RTLS')
 
         return args
         
@@ -256,7 +265,9 @@ if __name__ == "__main__":
     mtFile = config.get('MTFILE','m2_aop.yaml')
     albedoType = config.get('ALBEDOTYPE','AMES_BRDF')
     plane_parallel = not config.get('DO_SPHERICITY',False)
+    do_fullrad = config.get('DO_FULLRAD',True)
     NSTOKES = config.get('NSTOKES',3)
+    write_op = config.get('WRITE_OP',True)
 
     args.paths_yaml = config['paths_yaml']
     args.inst_yaml  = config['inst_yaml']
@@ -321,6 +332,7 @@ if __name__ == "__main__":
         print('>>>brdfFile:  ',brdfFile)
         print('>>>verbose:   ',args.verbose)
         print('>>>plane_parallel',plane_parallel)
+        print('>>>do_fullrad',do_fullrad)
         print('>>>nproc:     ',args.nproc)
         print('++++End of arguments+++')
         print('') 
@@ -332,6 +344,7 @@ if __name__ == "__main__":
                             verbose=args.verbose,
                             debug=args.debug,
                             plane_parallel=plane_parallel,
+                            do_fullrad=do_fullrad,
                             nproc=args.nproc)
 
         # Run VLIDORT
@@ -353,32 +366,52 @@ if __name__ == "__main__":
         iGood = np.where(vlidort.iGood)[0]
 
         with Pool(vlidort.nproc) as p:
+            # loop through nobs in batches
+            for sob in range(0,vlidort.nobs,vlidort.nbatch):
+                print(f'sob: {sob}, nobs: {vlidort.nobs}')
 
-            # Loop through channels
-            for ich,channel in enumerate(vlidort.channels):
-                print(f'ich: {ich}  channel: {channel}')
+                eob = min([vlidort.nobs, sob + vlidort.nbatch])
+                iobs = iGood[sob:eob]
+               
+                # Subset inputs for batch 
+                vlidort.aer = vlidort.AER.isel(nobs=slice(sob,eob)).load()
+                vlidort.edges = vlidort.EDGES.isel(nobs=slice(sob,eob)).load()
+                vlidort.geoms = vlidort.GEOMS.isel(nobs=iobs).load()
+                vlidort.surface = vlidort.SURFACE.isel(nobs=iobs).load()
+                vlidort.rayleigh = vlidort.RAYLEIGH.isel(nobs=slice(sob,eob)).load()
 
-                # Get Rayleigh optical depth profile
-                vlidort.getROT(channel)
+                # Loop through channels
+                for ich,channel in enumerate(vlidort.channels):
+                    print(f'ich: {ich}  channel: {channel}')
 
-                # loop through nobs in batches
-                # just doing one batch for benchmark
-                for sob in range(0,vlidort.nobs,vlidort.nbatch):
-                    print(f'sob: {sob}, nobs: {vlidort.nobs}')
+                    # Get optical property inputs
+                    t_start = time.perf_counter()
+                    batch_args  = vlidort.getargs(ich)
+                    t_end = time.perf_counter()
+                    if vlidort.verbose:
+                        print(f'   -> getargs took: {t_end - t_start:.4f} seconds')
 
-                    eob = min([vlidort.nobs, sob + vlidort.nbatch])
-                    iobs = iGood[sob:eob]
-                    npts = eob - sob
-
-                    # Subset inputs for batch
-                    # And get optical property inputs
-                    batch_args  = vlidort.getargs(ich,sob,eob,iobs,npts)
+                    if write_op: 
+                        t_start = time.perf_counter()
+                        vlidort.writeArgs(ich, sob, eob, batch_args, 'RTLS')
+                        t_end = time.perf_counter()
+                        if vlidort.verbose:
+                            print(f'   -> writeargs took: {t_end - t_start:.4f} seconds')
 
                     print('   - run TWOSTREAM')
+                    t_start = time.perf_counter()
                     vlidort.runTWOSTREAM(p,ich,sob,batch_args)
+                    t_end = time.perf_counter()
+                    if vlidort.verbose:
+                        print(f'   -> TWOSTREAM took: {t_end - t_start:.4f} seconds')
+
 
                     print('   - run VLIDORT')
+                    t_start = time.perf_counter()
                     vlidort.runVLIDORT(p,ich,sob,batch_args)
+                    t_end = time.perf_counter()
+                    if vlidort.verbose:
+                        print(f'   -> VLIDORT took: {t_end - t_start:.4f} seconds')
 
             # Write outputs
             vlidort.writeNC()
