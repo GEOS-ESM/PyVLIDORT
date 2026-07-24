@@ -210,6 +210,7 @@
          write(*,*) 'VLIDORT_MASTER STATUS_CALCULATION RETURNED ERROR'
          write(*,*) self%Surface%Base%VIO%VLIDORT_Out%Status%TS_STATUS_CALCULATION
          write(*,*) self%Surface%Base%VIO%VLIDORT_Out%Status%TS_MESSAGE
+         write(*,*) self%Surface%Base%VIO%VLIDORT_Out%Status%TS_TRACE_1
          rc = 4
       end if
       if ( rc /= 0 ) return 
