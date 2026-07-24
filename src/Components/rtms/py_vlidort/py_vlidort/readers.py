@@ -58,23 +58,32 @@ class READERS(object):
             ds = ds.rename({stack_dims[0]: 'nobs'})
 
         # Map variables dynamically (using dict.get for alias fallback)
+        ang_vars = {}
         for sds in self.SDS_ANG:
-            setattr(self, sds, ds[self.ncALIAS.get(sds, sds)])
+            ang_vars[sds] = ds[self.ncALIAS.get(sds, sds)]        
 
         # define RAA according to photon travel direction
-        saa = self.SAA + 180.0
+        saa = ang_vars['SAA'] + 180.0
         I = saa >= 360.
         saa[I.compute()] = saa[I.compute()] - 360.
 
-        RAA = self.VAA - saa
+        RAA = ang_vars['VAA'] - saa
         I = RAA < 0
         RAA[I.compute()] = RAA[I.compute()]+360.0
-        self.RAA = RAA
 
         # Limit SZAs
-        iGood = self.SZA < 80
+        iGood = ang_vars['SZA'] < 80
         self.iGood = self.iGood & iGood.values
         self.nobs = np.sum(self.iGood)
+
+        # Pack angles into an xarray Dataset
+        self.GEOMS = xr.Dataset({
+            'RAA': RAA,
+            'SZA': ang_vars['SZA'],
+            'SAA': ang_vars['SAA'],
+            'VZA': ang_vars['VZA']
+        })
+
 
     #---
     def readSampledGEOS(self):
@@ -153,22 +162,35 @@ class READERS(object):
         spatial_dims = [dim for dim in da.dims if dim not in ["nkernel", "nwav"]]
 
         # reshape to [nkernel,nch,nobs]
-        self.kernel_wt = da.stack(nobs=spatial_dims).transpose("nkernel", "nwav", "nobs")
+        kernel_wt = da.stack(nobs=spatial_dims).transpose("nkernel", "nwav", "nobs")
 
-        # make an array of the params, just big enough for a batch
-        param1 = np.array([2]*self.nbatch)
-        param2 = np.array([1]*self.nbatch)
+        # Create RTLSparam scaled to the full number of observations
+        full_nobs = kernel_wt.sizes["nobs"]
+        nwav_size = kernel_wt.sizes["nwav"]
+ 
+        # Make array of shape [nparam, nwav, nobs] initialized to [2, 1, ..., full_nobs]
+        param = np.zeros((2, nwav_size, full_nobs), dtype=np.float64)
+        param[0, :, :] = 2
+        param[1, :, :] = 1
 
-        #[nparam,nch,nobs]
-        param1.shape = (1,1,self.nbatch)
-        param2.shape = (1,1,self.nbatch)
-
-        # [nparam,nch,nobs]
-        self.RTLSparam = np.append(param1,param2,axis=0)
-        self.RTLSparam = self.RTLSparam.reshape(2,1,self.nbatch)
+        # Convert it to an xarray DataArray so it matches kernel_wt's coordinates
+        RTLSparam = xr.DataArray(
+            param, 
+            dims=["nparam", "nwav", "nobs"],
+            coords={
+                "nobs": kernel_wt.coords["nobs"],
+                "nwav": kernel_wt.coords["nwav"]
+            } 
+        )
 
         # filter for nans
-        iGood = ~np.isnan(self.kernel_wt[0,0,:])
+        iGood = ~np.isnan(kernel_wt[0,0,:])
         self.iGood = self.iGood & iGood.values
         self.nobs = np.sum(self.iGood)
+
+        # Pack into SURFACE dataset
+        self.SURFACE = xr.Dataset({
+            'kernel_wt': kernel_wt,
+            'RTLSparam': RTLSparam
+        })
 
