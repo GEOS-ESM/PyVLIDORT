@@ -94,18 +94,18 @@ class WRITERS(object):
                 'angle':          (['ang'], self.angles.data, ARGS_ATTS['ang']),
 
                 # 1-D Variables
-                'DEPOL_RATIO':    (['ch'], depol_ratio, ARGS_ATTS['depol']),
-                'VZA':            (['nobs'], vza, ARGS_ATTS['vza']),
-                'SZA':            (['nobs'], sza, ARGS_ATTS['sza']),
-                'RAA':            (['nobs'], raa, ARGS_ATTS['raa']),
+                'DEPOL_RATIO':    (['ch'], depol_ratio.values, ARGS_ATTS['depol']),
+                'VZA':            (['nobs'], vza.values, ARGS_ATTS['vza']),
+                'SZA':            (['nobs'], sza.values, ARGS_ATTS['sza']),
+                'RAA':            (['nobs'], raa.values, ARGS_ATTS['raa']),
 
                 # 2-D Variables
-                'PE':             (['leve', 'nobs'], pe, ARGS_ATTS['pe']),
-                'TE':             (['leve', 'nobs'], te, ARGS_ATTS['te']),
-                'ZE':             (['leve', 'nobs'], ze, ARGS_ATTS['ze']),
+                'PE':             (['leve', 'nobs'], pe.values, ARGS_ATTS['pe']),
+                'TE':             (['leve', 'nobs'], te.values, ARGS_ATTS['te']),
+                'ZE':             (['leve', 'nobs'], ze.values, ARGS_ATTS['ze']),
 
                 # 3-D Variables
-                'ROT':            (['lev', 'nobs', 'ch'], rot, ARGS_ATTS['rot']),
+                'ROT':            (['lev', 'nobs', 'ch'], rot.values, ARGS_ATTS['rot']),
                 'TAU':            (['lev', 'nobs', 'ch'], tau.transpose(0, 2, 1), ARGS_ATTS['tau']),
                 'SSA':            (['lev', 'nobs', 'ch'], ssa.transpose(0, 2, 1), ARGS_ATTS['ssa']),
                 'G':              (['lev', 'nobs', 'ch'], g.transpose(0, 2, 1), ARGS_ATTS['g']),
@@ -115,8 +115,8 @@ class WRITERS(object):
             }
 
             if surface_type == 'RTLS':
-                data_vars['RTLS_PARAM'] = (['nparam', 'nobs', 'ch'], param.transpose(0, 2, 1), ARGS_ATTS['param'])
-                data_vars['RTLS_KERNEL_WT'] = (['nkernel', 'nobs', 'ch'], kernel_wt.transpose(0, 2, 1), ARGS_ATTS['kernel_wt'])
+                data_vars['RTLS_PARAM'] = (['nparam', 'nobs', 'ch'], param.transpose('nparam', 'nobs', 'nwav').values, ARGS_ATTS['param'])
+                data_vars['RTLS_KERNEL_WT'] = (['nkernel', 'nobs', 'ch'], kernel_wt.transpose('nkernel', 'nobs', 'nwav').values, ARGS_ATTS['kernel_wt'])
             elif surface_type == 'LAMBERTIAN':
                 albedo_array = np.full((self.nbatch, 1), albedo)
                 data_vars['ALBEDO'] = (['nobs', 'ch'], albedo_array, ARGS_ATTS['albedo'])
@@ -175,7 +175,7 @@ class WRITERS(object):
             # 3-D variables requiring transpose(0, 2, 1)
             transposed_3d = [
                 ('TAU', tau), ('SSA', ssa), ('G', g),
-                ('RTLS_PARAM', param), ('RTLS_KERNEL_WT', kernel_wt)
+                ('RTLS_PARAM', param.values), ('RTLS_KERNEL_WT', kernel_wt.values)
             ]
             for name, data in transposed_3d:
                 nc.variables[name][:, sob:eob, ich] = data.transpose(0, 2, 1)
