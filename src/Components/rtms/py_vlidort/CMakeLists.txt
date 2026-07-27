@@ -19,6 +19,13 @@ add_f2py3_module (TWOSTREAM_
   )
 add_dependencies(TWOSTREAM_ drivers TWOSTREAM2p4)
 
+add_f2py3_module(AOP_
+    SOURCES AOP_py.F90
+    DESTINATION lib/Python/${this}
+    INCLUDEDIRS ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_BINARY_DIR}/lib ${include_${this}}
+    )
+
+
 file (GLOB python_files CONFIGURE_DEPENDS py_vlidort/*.py)
 install (FILES ${python_files} DESTINATION lib/Python/py_vlidort)
 

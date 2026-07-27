@@ -178,7 +178,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
 
         # calculate AOPs dims are [nlev,nch,nobs]
         t1 = time.perf_counter()
-        self.getpyobsAOP(self.channels[ich])
+        self.getAOP(self.channels[ich])
         tau  = self.tau
         ssa  = self.ssa
         pmatrix = self.pmatrix
@@ -254,11 +254,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--dryrun",action="store_true",
                         help="do a dry run (default=False).")
 
-    parser.add_argument("--novlidort",action="store_true",
-                        help="don't do vlidort calc, aops only (default=False).")
-
     args = parser.parse_args()
-    do_vlidort     = not args.novlidort
 
     config = yaml.safe_load(open(args.inputs_yaml))
 
