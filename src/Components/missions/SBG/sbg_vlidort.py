@@ -15,6 +15,7 @@
     Patricia Castellanos, Jan 2020
 
 """
+import psutil
 import time
 import os,sys
 import argparse
@@ -75,9 +76,11 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
     brdfFile      : string template for file with brdf parameters
     verbose       : write debugging outputs
     debug         : write debug files
+    do_inputscacl : do input calculation, if False reads from file
     """
     def __init__(self,inFile,outFile,argsFile,mtFile,albedoType,
                 instname,
+                do_inputscalc=True,
                 NSTOKES=3,
                 albedo=None,
                 nstreams=12,
@@ -177,25 +180,32 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
         depol_ratio = self.rayleigh.depol_ratio[ich:ich+1].values
 
         # calculate AOPs dims are [nlev,nch,nobs]
-        t1 = time.perf_counter()
-        self.getAOP(self.channels[ich])
-        tau  = self.tau
-        ssa  = self.ssa
-        pmatrix = self.pmatrix
-        g    = self.g
-        t2 = time.perf_counter()
-        if self.verbose:
-            print(f"      -> getpyobsAOP took {t2-t1:.4f}s")
+        if self.do_inputscalc:
+            t1 = time.perf_counter()
+            self.getAOP(self.channels[ich])
+            tau  = self.tau
+            ssa  = self.ssa
+            pmatrix = self.pmatrix
+            g    = self.g
+            t2 = time.perf_counter()
+            if self.verbose:
+                print(f"      -> getpyobsAOP took {t2-t1:.4f}s")
 
-        # Subset vertical levels for good obs only. dims are [nlev+1,nobs]
+        else:
+            tau = self.aer.tau[:,ich:ich+1,:].values
+            ssa = self.aer.ssa[:,ich:ich+1,:].values
+            pmatrix = self.aer.pmatrix[:,ich:ich+1,:,:,:].values
+            g   = self.aer.g[:,ich:ich+1,:].values
+
+        # get vertical levels dims are [nlev+1,nobs]
         pe   = self.edges.pe.values.astype('float64')
         ze   = self.edges.ze.values.astype('float64')
         te   = self.edges.te.values.astype('float64')
 
-        # subset angles for good obs only. dims are [nobs]
-        vza = self.geoms.VZA.astype('float64')
-        sza = self.geoms.SZA.astype('float64')
-        raa = self.geoms.RAA.astype('float64')
+        # get angles. dims are [nobs]
+        vza = self.geoms.VZA.values.astype('float64')
+        sza = self.geoms.SZA.values.astype('float64')
+        raa = self.geoms.RAA.values.astype('float64')
 
         # cloud properties
         # empty for now
@@ -263,7 +273,9 @@ if __name__ == "__main__":
     plane_parallel = not config.get('DO_SPHERICITY',False)
     do_fullrad = config.get('DO_FULLRAD',True)
     NSTOKES = config.get('NSTOKES',3)
-    write_op = config.get('WRITE_OP',True)
+    write_inputs = config.get('WRITE_INPUTS',True)
+    do_rtcalc = config.get('DO_RTCALC',True)
+    do_inputscalc = config.get('DO_INPUTSCALC',True)
 
     args.paths_yaml = config['paths_yaml']
     args.inst_yaml  = config['inst_yaml']
@@ -317,6 +329,8 @@ if __name__ == "__main__":
             argsFile = argsFile.replace(k, v)
             brdfFile = brdfFile.replace(k, v)
 
+        argsFile = argsFile.replace('.nc', '.zarr')
+
         # Initialize VLIDORT class getting aerosol optical properties
         # -----------------------------------------------------------
         print('++++Running VLIDORT with the following arguments+++')
@@ -341,6 +355,7 @@ if __name__ == "__main__":
                             debug=args.debug,
                             plane_parallel=plane_parallel,
                             do_fullrad=do_fullrad,
+                            do_inputscalc=do_inputscalc,
                             nproc=args.nproc)
 
         # Run VLIDORT
@@ -361,39 +376,50 @@ if __name__ == "__main__":
         # Get the index of good obs
         iGood = np.where(vlidort.iGood)[0]
 
-        with Pool(vlidort.nproc) as p:
-            # loop through nobs in batches
-            for sob in range(0,vlidort.nobs,vlidort.nbatch):
-                print(f'sob: {sob}, nobs: {vlidort.nobs}')
+        if do_rtcalc:
+            p = Pool(vlidort.nproc)
 
-                eob = min([vlidort.nobs, sob + vlidort.nbatch])
-                iobs = iGood[sob:eob]
-               
-                # Subset inputs for batch 
-                vlidort.aer = vlidort.AER.isel(nobs=slice(sob,eob)).load()
-                vlidort.edges = vlidort.EDGES.isel(nobs=slice(sob,eob)).load()
+
+        # loop through nobs in batches
+        for sob in range(0,vlidort.nobs,vlidort.nbatch):
+            mem = psutil.virtual_memory()
+            print(f'sob: {sob}, Available: {mem.available/1e9:.1f} GB, Used: {mem.percent}%')
+
+            print(f'sob: {sob}, nobs: {vlidort.nobs}')
+
+            eob = min([vlidort.nobs, sob + vlidort.nbatch])
+            iobs = iGood[sob:eob]
+           
+            # Subset inputs for batch
+            vlidort.aer = vlidort.AER.isel(nobs=slice(sob,eob)).load()
+            vlidort.edges = vlidort.EDGES.isel(nobs=slice(sob,eob)).load()
+            vlidort.rayleigh = vlidort.RAYLEIGH.isel(nobs=slice(sob,eob)).load()
+            if vlidort.do_inputscalc:
                 vlidort.geoms = vlidort.GEOMS.isel(nobs=iobs).load()
                 vlidort.surface = vlidort.SURFACE.isel(nobs=iobs).load()
-                vlidort.rayleigh = vlidort.RAYLEIGH.isel(nobs=slice(sob,eob)).load()
+            else:
+                vlidort.geoms = vlidort.GEOMS.isel(nobs=slice(sob,eob)).load()
+                vlidort.surface = vlidort.SURFACE.isel(nobs=slice(sob,eob)).load()
 
-                # Loop through channels
-                for ich,channel in enumerate(vlidort.channels):
-                    print(f'ich: {ich}  channel: {channel}')
+            # Loop through channels
+            for ich,channel in enumerate(vlidort.channels):
+                print(f'ich: {ich}  channel: {channel}')
 
-                    # Get optical property inputs
+                # Get optical property inputs
+                t_start = time.perf_counter()
+                batch_args  = vlidort.getargs(ich)
+                t_end = time.perf_counter()
+                if vlidort.verbose:
+                    print(f'   -> getargs took: {t_end - t_start:.4f} seconds')
+
+                if write_inputs: 
                     t_start = time.perf_counter()
-                    batch_args  = vlidort.getargs(ich)
+                    vlidort.writeArgs(ich, sob, eob, iobs, batch_args, 'RTLS')
                     t_end = time.perf_counter()
                     if vlidort.verbose:
-                        print(f'   -> getargs took: {t_end - t_start:.4f} seconds')
+                        print(f'   -> writeargs took: {t_end - t_start:.4f} seconds')
 
-                    if write_op: 
-                        t_start = time.perf_counter()
-                        vlidort.writeArgs(ich, sob, eob, batch_args, 'RTLS')
-                        t_end = time.perf_counter()
-                        if vlidort.verbose:
-                            print(f'   -> writeargs took: {t_end - t_start:.4f} seconds')
-
+                if do_rtcalc:
                     print('   - run TWOSTREAM')
                     t_start = time.perf_counter()
                     vlidort.runTWOSTREAM(p,ich,sob,batch_args)
@@ -409,10 +435,15 @@ if __name__ == "__main__":
                     if vlidort.verbose:
                         print(f'   -> VLIDORT took: {t_end - t_start:.4f} seconds')
 
-            # Write outputs
-            vlidort.writeNC()
+        # Write outputs
+        vlidort.writeNC()
             
-            # rewrite args onto the correct grid
-            vlidort.expand_dimensions() 
+#        # rewrite args onto the correct grid
+#        vlidort.expand_dimensions() 
+
+        if do_rtcalc:
+            pool.close()
+            pool.join()
+
 
         date += Dt
