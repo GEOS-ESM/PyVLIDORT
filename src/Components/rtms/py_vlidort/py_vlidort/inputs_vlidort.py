@@ -41,32 +41,46 @@ class INPUTS_VLIDORT(G2GAOP):
         ROT: [nlev,npts,nch]
         depol_ratio: [nch]
         """
-        args = [wavelength, self.EDGES.pe.astype('float64'), self.EDGES.ze.astype('float64'), self.EDGES.te.astype('float64'), self.MISSING, self.verbose]
-        vlidortWrapper = WrapperFuncs['ROT_CALC']
-        ROT, depol_ratio, rc = vlidortWrapper(*args)        
+        if self.do_inputscalc:
+            args = [wavelength, self.EDGES.pe.astype('float64'), self.EDGES.ze.astype('float64'), self.EDGES.te.astype('float64'), self.MISSING, self.verbose]
+            vlidortWrapper = WrapperFuncs['ROT_CALC']
+            ROT, depol_ratio, rc = vlidortWrapper(*args)        
 
-        # Format wavelength as a 1D array for the coordinate
-        # (e.g., 550.0 becomes [550.0])
-        wav_coord = np.atleast_1d(wavelength)
+            # Format wavelength as a 1D array for the coordinate
+            # (e.g., 550.0 becomes [550.0])
+            wav_coord = np.atleast_1d(wavelength)
 
 
-        # Pack ROT and depol_ratio into an xarray Dataset called RAYLEIGH
-        self.RAYLEIGH = xr.Dataset(
-            {
-                'ROT': (('lev', 'nobs', 'nch'), ROT),
-                'depol_ratio': (('nch',), depol_ratio)
-            },
-            coords={
-                # Inherit exactly the same coordinates for lev and nobs
-                'lev': self.AER.coords['lev'],
-                'nobs': self.AER.coords['nobs'],
-                'nch': wav_coord 
-            },
-            attrs={
-                'description': 'Rayleigh optical depth and depolarization ratio'
-            }
-        )
+            # Pack ROT and depol_ratio into an xarray Dataset called RAYLEIGH
+            self.RAYLEIGH = xr.Dataset(
+                {
+                    'ROT': (('lev', 'nobs', 'nch'), ROT),
+                    'depol_ratio': (('nch',), depol_ratio)
+                },
+                coords={
+                    # Inherit exactly the same coordinates for lev and nobs
+                    'lev': self.AER.coords['lev'],
+                    'nobs': self.AER.coords['nobs'],
+                    'nch': wav_coord 
+                },
+                attrs={
+                    'description': 'Rayleigh optical depth and depolarization ratio'
+                }
+            )
+        else:
+            filename = self.argsFile
+            if self.verbose:
+                print(f'opening file {filename}')
+            ds = xr.open_dataset(filename, mode='r')
 
+
+            ROT = ds['ROT']
+            depol_ratio = ds['DEPOL_RATIO']
+
+            self.RAYLEIGH = xr.Dataset({
+                'ROT' : ROT,
+                'depol_ratio': depol_ratio
+            })
 
     #---
     def getAOP(self,wavelength,vector=True,Species=None,do_g=True):
@@ -294,54 +308,73 @@ class INPUTS_VLIDORT(G2GAOP):
         # pe [nlev+,npts]
         # ze [nlev+1,npts]
         # -----------------------------------------
-        rhodz = self.AER['DELP'] / GRAV
-        dz = rhodz / self.AER['AIRDENS']       # column thickness in m
+        if self.do_inputscalc:
 
-        # add up the thicknesses to get edge level altitudes and pressures
-        npts, nlev = dz.shape
-        ze = np.array([dz[:,i:].sum(axis=1) for i in range(nlev)])
-        # append surface level, altitude = 0
-        # [nlev+1,nacross]
-        ze = np.append(ze,np.zeros([1,npts]),axis=0)
+            rhodz = self.AER['DELP'] / GRAV
+            dz = rhodz / self.AER['AIRDENS']       # column thickness in m
 
-        ptop = 1. # Pa
-        pe = np.zeros([nlev+1,npts])
-        pe[0,:] = ptop
-        for ilev in range(nlev):
-            pe[ilev+1,:] = pe[ilev,:] + self.AER['DELP'][:,ilev]
+            # add up the thicknesses to get edge level altitudes and pressures
+            npts, nlev = dz.shape
+            ze = np.array([dz[:,i:].sum(axis=1) for i in range(nlev)])
+            # append surface level, altitude = 0
+            # [nlev+1,nacross]
+            ze = np.append(ze,np.zeros([1,npts]),axis=0)
 
-        # get the mid-level pressures and temperatures
-        pm = (pe[:-1,:] + pe[1:,:])*0.5
-        tm = pm/(self.AER['AIRDENS'].T*RGAS)
+            ptop = 1. # Pa
+            pe = np.zeros([nlev+1,npts])
+            pe[0,:] = ptop
+            for ilev in range(nlev):
+                pe[ilev+1,:] = pe[ilev,:] + self.AER['DELP'][:,ilev]
 
-        # get the edge level temperature
-        te = np.zeros([nlev+1,npts])
-        te[0,:] = tm[0,:]  #isothermal a highest level
-        for ilev in range(1,nlev):
-            alpha = np.log(pe[ilev,:]/pm[ilev-1,:])/np.log(pm[ilev,:]/pm[ilev-1,:])
-            te[ilev,:] = tm[ilev-1] + alpha*(tm[ilev,:] - tm[ilev-1,:])
+            # get the mid-level pressures and temperatures
+            pm = (pe[:-1,:] + pe[1:,:])*0.5
+            tm = pm/(self.AER['AIRDENS'].T*RGAS)
 
-        # dry adiabatic
-        te[nlev,:] = tm[nlev-1,:]*(pe[nlev,:]/pm[nlev-1,:])**KAPPA
+            # get the edge level temperature
+            te = np.zeros([nlev+1,npts])
+            te[0,:] = tm[0,:]  #isothermal a highest level
+            for ilev in range(1,nlev):
+                alpha = np.log(pe[ilev,:]/pm[ilev-1,:])/np.log(pm[ilev,:]/pm[ilev-1,:])
+                te[ilev,:] = tm[ilev-1] + alpha*(tm[ilev,:] - tm[ilev-1,:])
 
-        # Create a new coordinate for the edge levels (1 to nlev+1)
-        leve_coord = np.arange(1, nlev + 2, dtype=np.float32)
-        
-        self.EDGES = xr.Dataset(
-            {
-                'pe': (('leve', 'nobs'), pe),
-                'ze': (('leve', 'nobs'), ze),
-                'te': (('leve', 'nobs'), te)
-            },
-            coords={
-                'leve': leve_coord,
-                # Inherit the nobs MultiIndex (time, ncross) directly from self.AER
-                'nobs': self.AER.coords['nobs']
-            },
-            attrs={
-                'description': 'Edge level profiles for pressure (pe), altitude (ze), and temperature (te)'
-            }
-        )
+            # dry adiabatic
+            te[nlev,:] = tm[nlev-1,:]*(pe[nlev,:]/pm[nlev-1,:])**KAPPA
+
+            # Create a new coordinate for the edge levels (1 to nlev+1)
+            leve_coord = np.arange(1, nlev + 2, dtype=np.float32)
+            
+            self.EDGES = xr.Dataset(
+                {
+                    'pe': (('leve', 'nobs'), pe),
+                    'ze': (('leve', 'nobs'), ze),
+                    'te': (('leve', 'nobs'), te)
+                },
+                coords={
+                    'leve': leve_coord,
+                    # Inherit the nobs MultiIndex (time, ncross) directly from self.AER
+                    'nobs': self.AER.coords['nobs']
+                },
+                attrs={
+                    'description': 'Edge level profiles for pressure (pe), altitude (ze), and temperature (te)'
+                }
+            )
+
+        else:
+            filename = self.argsFile
+            if self.verbose:
+                print(f'opening file {filename}')
+            ds = xr.open_dataset(filename, mode='r')
+
+            pe = ds['PE']
+            ze = ds['ZE']
+            te = ds['TE']
+
+            self.EDGES = xr.Dataset(
+                {
+                    'pe':  pe,
+                    'ze':  ze,
+                    'te':  te
+                })            
 
 
     #---

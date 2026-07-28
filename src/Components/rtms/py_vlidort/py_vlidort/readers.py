@@ -44,45 +44,73 @@ class READERS(object):
         """
         Read in viewing and solar Geometry from angFile
         """
-        filename = self.inFile.replace('%col', self.instname)
-        if self.verbose:
-            print(f'opening file {filename}')
+        if self.do_inputscalc:
+            filename = self.inFile.replace('%col', self.instname)
+            if self.verbose:
+                print(f'opening file {filename}')
 
-        ds = xr.open_dataset(filename, chunks="auto").squeeze()
+            ds = xr.open_dataset(filename, chunks="auto").squeeze()
 
-        # figure out what to stack into 'nobs'
-        stack_dims = [d for d in ['time', 'ncross', 'nalong'] if d in ds.dims]
-        if len(stack_dims) > 1:
-            ds = ds.stack(nobs=stack_dims)
-        elif len(stack_dims) == 1:
-            ds = ds.rename({stack_dims[0]: 'nobs'})
+            # figure out what to stack into 'nobs'
+            stack_dims = [d for d in ['time', 'ncross', 'nalong'] if d in ds.dims]
+            if len(stack_dims) > 1:
+                ds = ds.stack(nobs=stack_dims)
+            elif len(stack_dims) == 1:
+                ds = ds.rename({stack_dims[0]: 'nobs'})
 
-        # Map variables dynamically (using dict.get for alias fallback)
-        ang_vars = {}
-        for sds in self.SDS_ANG:
-            ang_vars[sds] = ds[self.ncALIAS.get(sds, sds)]        
+            # Map variables dynamically (using dict.get for alias fallback)
+            ang_vars = {}
+            for sds in self.SDS_ANG:
+                ang_vars[sds] = ds[self.ncALIAS.get(sds, sds)]        
 
-        # define RAA according to photon travel direction
-        saa = ang_vars['SAA'] + 180.0
-        I = saa >= 360.
-        saa[I.compute()] = saa[I.compute()] - 360.
+            # define RAA according to photon travel direction
+            saa = ang_vars['SAA'] + 180.0
+            I = saa >= 360.
+            saa[I.compute()] = saa[I.compute()] - 360.
 
-        RAA = ang_vars['VAA'] - saa
-        I = RAA < 0
-        RAA[I.compute()] = RAA[I.compute()]+360.0
+            RAA = ang_vars['VAA'] - saa
+            I = RAA < 0
+            RAA[I.compute()] = RAA[I.compute()]+360.0
 
-        # Limit SZAs
-        iGood = ang_vars['SZA'] < 80
-        self.iGood = self.iGood & iGood.values
-        self.nobs = np.sum(self.iGood)
+            # Limit SZAs
+            iGood = ang_vars['SZA'] < 80
+            self.iGood = self.iGood & iGood.values
+            self.nobs = np.sum(self.iGood)
 
-        # Pack angles into an xarray Dataset
-        self.GEOMS = xr.Dataset({
-            'RAA': RAA,
-            'SZA': ang_vars['SZA'],
-            'SAA': ang_vars['SAA'],
-            'VZA': ang_vars['VZA']
-        })
+            # Pack angles into an xarray Dataset
+            self.GEOMS = xr.Dataset({
+                'RAA': RAA,
+                'SZA': ang_vars['SZA'],
+                'SAA': ang_vars['SAA'],
+                'VZA': ang_vars['VZA']
+            })
+
+
+        else:
+            filename = self.argsFile
+            if self.verbose:
+                print(f'opening file {filename}')
+            ds = xr.open_dataset(filename, mode='r')
+
+            VZA         = ds['VZA']
+            SZA         = ds['SZA']
+            RAA         = ds['RAA']
+            iobs        = ds['IOBS'].values
+
+            # Pack angles into an xarray Dataset
+            self.GEOMS = xr.Dataset({
+                'RAA': RAA,
+                'SZA': SZA,
+                'VZA': VZA
+            })
+
+            # Reset existing iGood array to all False
+            self.iGood[:] = False
+
+            # Set only the indices in iobs to True
+            self.iGood[iobs] = True
+            self.nobs = np.sum(self.iGood)
+
 
 
     #---
@@ -90,28 +118,50 @@ class READERS(object):
         """
         Read in model sampled track
         """
+        if self.do_inputscalc:
+            cols = ['aer_Nv'] + (['met_Nv'] if len(self.SDS_MET) > 0 else [])
+            inList = [self.inFile.replace('%col', col) for col in cols]
 
-        cols = ['aer_Nv'] + (['met_Nv'] if len(self.SDS_MET) > 0 else [])
-        inList = [self.inFile.replace('%col', col) for col in cols]
+            if self.verbose:
+                for f in inList:
+                    print(f'opening file {f}')
 
-        if self.verbose:
-            for f in inList:
-                print(f'opening file {f}')
+            self.AER = xr.open_mfdataset(inList, chunks="auto").squeeze()
 
-        self.AER = xr.open_mfdataset(inList, chunks="auto").squeeze()
+            # make arrays [nobs,nlev]
+            # dynamically stack dimensions into 'nobs'
+            stack_dims = [d for d in ['time', 'ncross', 'nalong'] if d in self.AER.dims]
+            if len(stack_dims) > 1:
+                self.AER = self.AER.stack(nobs=stack_dims)
+            elif len(stack_dims) == 1:
+                self.AER = self.AER.rename({stack_dims[0]: 'nobs'})
 
-        # make arrays [nobs,nlev]
-        # dynamically stack dimensions into 'nobs'
-        stack_dims = [d for d in ['time', 'ncross', 'nalong'] if d in self.AER.dims]
-        if len(stack_dims) > 1:
-            self.AER = self.AER.stack(nobs=stack_dims)
-        elif len(stack_dims) == 1:
-            self.AER = self.AER.rename({stack_dims[0]: 'nobs'})
+            # the ellipsis (...) safely ignores variables that might not have a 'lev' dimension
+            self.AER = self.AER.transpose("nobs", "lev", ...)
+            iGood = np.arange(len(self.iGood))[self.iGood]
+            self.AER = self.AER.isel(nobs=iGood)
 
-        # the ellipsis (...) safely ignores variables that might not have a 'lev' dimension
-        self.AER = self.AER.transpose("nobs", "lev", ...)
-        iGood = np.arange(len(self.iGood))[self.iGood]
-        self.AER = self.AER.isel(nobs=iGood)
+        else:
+            filename = self.argsFile
+            if self.verbose:
+                print(f'opening file {filename}')
+            ds = xr.open_dataset(filename, mode='r')
+
+            tau = ds['TAU'].transpose('lev', 'ch', 'nobs')
+            ssa = ds['SSA'].transpose('lev', 'ch', 'nobs')
+            g   = ds['G'].transpose('lev', 'ch', 'nobs')
+            
+            # Transpose 5-D variable back to (lev, ch, nobs, ang, npol)
+            pmatrix = ds['PMATRIX'].transpose('lev', 'ch', 'nobs', 'ang', 'npol')
+
+
+            # Pack into AER dataset
+            self.AER = xr.Dataset({
+                'tau': tau,
+                'ssa': ssa,
+                'g': g,
+                'pmatrix': pmatrix
+            })
 
     # ---
     def LandSeaMask(self):
@@ -150,47 +200,67 @@ class READERS(object):
         Read in AMES BRDF kernel weights
         that have already been sampled on swath
         """
-        if self.verbose:
-            print('opening BRDF file ',self.brdfFile)
-        ds = xr.open_dataset(self.brdfFile,chunks="auto").squeeze()
+        if self.do_inputscalc:
 
-        # concatenate kernel weights into one data array
-        da = xr.concat([ds.Ki,ds.Kg,ds.Kv],dim="nkernel")
-        da = da.rename("kernel_wt")
+            if self.verbose:
+                print('opening BRDF file ',self.brdfFile)
+            ds = xr.open_dataset(self.brdfFile,chunks="auto").squeeze()
 
-        # identify the spatial dimensions (e.g., ['time', 'ncross'] or ['nalong', 'ncross'])
-        spatial_dims = [dim for dim in da.dims if dim not in ["nkernel", "nwav"]]
+            # concatenate kernel weights into one data array
+            da = xr.concat([ds.Ki,ds.Kg,ds.Kv],dim="nkernel")
+            da = da.rename("kernel_wt")
 
-        # reshape to [nkernel,nch,nobs]
-        kernel_wt = da.stack(nobs=spatial_dims).transpose("nkernel", "nwav", "nobs")
+            # identify the spatial dimensions (e.g., ['time', 'ncross'] or ['nalong', 'ncross'])
+            spatial_dims = [dim for dim in da.dims if dim not in ["nkernel", "nwav"]]
 
-        # Create RTLSparam scaled to the full number of observations
-        full_nobs = kernel_wt.sizes["nobs"]
-        nwav_size = kernel_wt.sizes["nwav"]
- 
-        # Make array of shape [nparam, nwav, nobs] initialized to [2, 1, ..., full_nobs]
-        param = np.zeros((2, nwav_size, full_nobs), dtype=np.float64)
-        param[0, :, :] = 2
-        param[1, :, :] = 1
+            # reshape to [nkernel,nch,nobs]
+            kernel_wt = da.stack(nobs=spatial_dims).transpose("nkernel", "nwav", "nobs")
 
-        # Convert it to an xarray DataArray so it matches kernel_wt's coordinates
-        RTLSparam = xr.DataArray(
-            param, 
-            dims=["nparam", "nwav", "nobs"],
-            coords={
-                "nobs": kernel_wt.coords["nobs"],
-                "nwav": kernel_wt.coords["nwav"]
-            } 
-        )
+            # Create RTLSparam scaled to the full number of observations
+            full_nobs = kernel_wt.sizes["nobs"]
+            nwav_size = kernel_wt.sizes["nwav"]
+     
+            # Make array of shape [nparam, nwav, nobs] initialized to [2, 1, ..., full_nobs]
+            param = np.zeros((2, nwav_size, full_nobs), dtype=np.float64)
+            param[0, :, :] = 2
+            param[1, :, :] = 1
 
-        # filter for nans
-        iGood = ~np.isnan(kernel_wt[0,0,:])
-        self.iGood = self.iGood & iGood.values
-        self.nobs = np.sum(self.iGood)
+            # Convert it to an xarray DataArray so it matches kernel_wt's coordinates
+            RTLSparam = xr.DataArray(
+                param, 
+                dims=["nparam", "nwav", "nobs"],
+                coords={
+                    "nobs": kernel_wt.coords["nobs"],
+                    "nwav": kernel_wt.coords["nwav"]
+                } 
+            )
 
-        # Pack into SURFACE dataset
-        self.SURFACE = xr.Dataset({
-            'kernel_wt': kernel_wt,
-            'RTLSparam': RTLSparam
-        })
+            # filter for nans
+            iGood = ~np.isnan(kernel_wt[0,0,:])
+            self.iGood = self.iGood & iGood.values
+            self.nobs = np.sum(self.iGood)
+
+            # Pack into SURFACE dataset
+            self.SURFACE = xr.Dataset({
+                'kernel_wt': kernel_wt,
+                'RTLSparam': RTLSparam
+            })
+        else:
+            filename = self.argsFile
+            if self.verbose:
+                print(f'opening file {filename}')
+            ds = xr.open_dataset(filename, mode='r')
+
+            kernel_wt = ds['RTLS_KERNEL_WT']
+            RTLSparam = ds['RTLS_PARAM']
+
+            # Transpose back to (nobs, channel, parameter) and rename 'ch' to 'nwav'
+            kernel_wt = kernel_wt.transpose('nkernel','ch','nobs').rename({'ch': 'nwav'})
+            RTLSparam = RTLSparam.transpose('nparam','ch','nobs').rename({'ch': 'nwav'})
+
+            # Pack into SURFACE dataset
+            self.SURFACE = xr.Dataset({
+                'kernel_wt': kernel_wt,
+                'RTLSparam': RTLSparam
+            })
 
