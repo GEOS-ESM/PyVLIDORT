@@ -8,4 +8,6 @@ DO_FULLRAD: True
 ALBEDOTYPES: 
     - AMES_BRDF
 MTFILE: 'm2_aop.yaml'
-WRITE_OP: True
+WRITE_INPUTS: True
+DO_RTCALC: True  # do the RT calculation, if false just gets optical properties
+DO_INPUTSCALC: True    # do optical property calcuation, if false reads from a precomputed file
