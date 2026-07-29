@@ -189,7 +189,7 @@ class SBG_VLIDORT(INPUTS_VLIDORT,READERS,WRITERS,VLIDORT,TWOSTREAM):
             g    = self.g
             t2 = time.perf_counter()
             if self.verbose:
-                print(f"      -> getpyobsAOP took {t2-t1:.4f}s")
+                print(f"    -> getpyobsAOP took {t2-t1:.4f}s")
 
         else:
             tau = self.aer.tau[:,ich:ich+1,:].values
@@ -329,7 +329,7 @@ if __name__ == "__main__":
             argsFile = argsFile.replace(k, v)
             brdfFile = brdfFile.replace(k, v)
 
-        argsFile = argsFile.replace('.nc', '.zarr')
+        argsFile = argsFile.replace('.nc4', '.zarr')
 
         # Initialize VLIDORT class getting aerosol optical properties
         # -----------------------------------------------------------
@@ -382,13 +382,11 @@ if __name__ == "__main__":
 
         # loop through nobs in batches
         for sob in range(0,vlidort.nobs,vlidort.nbatch):
-            mem = psutil.virtual_memory()
-            print(f'sob: {sob}, Available: {mem.available/1e9:.1f} GB, Used: {mem.percent}%')
-
-            print(f'sob: {sob}, nobs: {vlidort.nobs}')
 
             eob = min([vlidort.nobs, sob + vlidort.nbatch])
             iobs = iGood[sob:eob]
+
+            print(f'sob: {sob}, eob: {eob}, nobs: {vlidort.nobs}')
            
             # Subset inputs for batch
             vlidort.aer = vlidort.AER.isel(nobs=slice(sob,eob)).load()
@@ -403,7 +401,7 @@ if __name__ == "__main__":
 
             # Loop through channels
             for ich,channel in enumerate(vlidort.channels):
-                print(f'ich: {ich}  channel: {channel}')
+                print(f'  ich: {ich}  channel: {channel}')
 
                 # Get optical property inputs
                 t_start = time.perf_counter()
@@ -435,13 +433,10 @@ if __name__ == "__main__":
                     if vlidort.verbose:
                         print(f'   -> VLIDORT took: {t_end - t_start:.4f} seconds')
 
-        # Write outputs
-        vlidort.writeNC()
-            
-#        # rewrite args onto the correct grid
-#        vlidort.expand_dimensions() 
-
         if do_rtcalc:
+            # Write RT outputs
+            vlidort.writeNC()
+            
             pool.close()
             pool.join()
 
