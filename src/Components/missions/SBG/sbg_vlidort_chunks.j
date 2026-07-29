@@ -9,7 +9,6 @@
 #SBATCH --constraint=mil
 #SBATCH --time=1:00:00
 #SBATCH -A @GROUPID
-#SBATCH -o output_sbg_vlidort-%j.log
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL

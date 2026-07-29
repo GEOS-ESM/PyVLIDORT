@@ -18,7 +18,7 @@ for i in $(seq 0 $((NCHUNKS - 1))); do
 
     sbatch --job-name="vlidort_ch${ICH_START}-${ICH_END}" \
            --time=12:00:00 \
-           --output="vlidort_ch${ICH_START}-${ICH_END}.log" \
+           --output="vlidort_ch${ICH_START}-${ICH_END}-%j.log" \
            sbg_vlidort_chunks.j "$ISO_T1" "$ISO_T2" "$YAML" \
            --ich_start $ICH_START --ich_end $ICH_END
 done
