@@ -8,7 +8,7 @@
 """
 import numpy   as np
 import xarray as xr
-
+import glob
 
 class READERS(object):
 
@@ -26,7 +26,7 @@ class READERS(object):
         """
         filename = self.inFile.replace('%col', 'aer_Nv')
         if self.verbose:
-            print(f'opening file {filename}')
+            print(f'getting dimensions from file {filename}')
 
         with xr.open_dataset(filename) as ds:
             self.ntyme = ds.sizes.get('time', 1)
@@ -87,15 +87,18 @@ class READERS(object):
 
 
         else:
-            filename = self.argsFile
+            # These vars are the same in every channel file — just open the first one
+            channel_files = sorted(glob.glob(self.argsFile.replace('.zarr', '_ch*.zarr')))
+            
             if self.verbose:
-                print(f'opening file {filename}')
-            ds = xr.open_dataset(filename, mode='r')
+                print(f'reading angles from file {channel_files[0]}')
+
+            ds = xr.open_zarr(channel_files[0])[['VZA', 'SZA', 'RAA', 'IOBS']]
 
             VZA         = ds['VZA']
             SZA         = ds['SZA']
             RAA         = ds['RAA']
-            iobs        = ds['IOBS'].values
+            iobs        = ds['IOBS'].values.astype(int) 
 
             # Pack angles into an xarray Dataset
             self.GEOMS = xr.Dataset({
@@ -124,7 +127,7 @@ class READERS(object):
 
             if self.verbose:
                 for f in inList:
-                    print(f'opening file {f}')
+                    print(f'reading sampled model from file {f}')
 
             self.AER = xr.open_mfdataset(inList, chunks="auto").squeeze()
 
@@ -142,10 +145,16 @@ class READERS(object):
             self.AER = self.AER.isel(nobs=iGood)
 
         else:
-            filename = self.argsFile
+            # Find all channel files
+            channel_files = sorted(glob.glob(self.argsFile.replace('.zarr', '_ch*.zarr')))
+
             if self.verbose:
-                print(f'opening file {filename}')
-            ds = xr.open_dataset(filename, mode='r')
+                print(f'reading AOP from {len(channel_files)} channel files from {self.argsFile}')
+
+            # Open all channels and concatenate along ch dimension
+            ds = xr.open_mfdataset(channel_files, engine='zarr',
+                                    concat_dim='ch', combine='nested',
+                                    data_vars=['TAU', 'SSA', 'G', 'PMATRIX'])
 
             tau = ds['TAU'].transpose('lev', 'ch', 'nobs')
             ssa = ds['SSA'].transpose('lev', 'ch', 'nobs')
@@ -163,6 +172,8 @@ class READERS(object):
                 'pmatrix': pmatrix
             })
 
+            ds = xr.open_zarr(channel_files[0])
+            self.angles = ds['angle'].values
     # ---
     def LandSeaMask(self):
         """
@@ -170,7 +181,7 @@ class READERS(object):
         """
         filename = self.inFile.replace('%col', 'asm_Nx')
         if self.verbose:
-            print(f'opening file {filename}')
+            print(f'reading land/sea mask from file {filename}')
 
         ds = xr.open_dataset(filename, chunks="auto").squeeze()
 
@@ -246,10 +257,15 @@ class READERS(object):
                 'RTLSparam': RTLSparam
             })
         else:
-            filename = self.argsFile
+            channel_files = sorted(glob.glob(self.argsFile.replace('.zarr', '_ch*.zarr')))
+
             if self.verbose:
-                print(f'opening file {filename}')
-            ds = xr.open_dataset(filename, mode='r')
+                print(f'reading BRDF from {len(channel_files)} channel files from {self.argsFile}')
+
+            ds = xr.open_mfdataset(channel_files, engine='zarr',
+                                    concat_dim='ch', combine='nested',
+                                    data_vars=['RTLS_KERNEL_WT', 'RTLS_PARAM'])
+
 
             kernel_wt = ds['RTLS_KERNEL_WT']
             RTLSparam = ds['RTLS_PARAM']

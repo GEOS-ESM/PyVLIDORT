@@ -9,6 +9,9 @@ import xarray as xr
 import pandas as pd
 import shutil
 from netCDF4 import Dataset as ncDataset
+from numcodecs import Blosc
+from glob import glob
+
 class WRITERS(object):
     def expand_dimensions(self):
             """
@@ -75,116 +78,116 @@ class WRITERS(object):
         elif surface_type == 'LAMBERTIAN':
             rot,depol_ratio,alpha,tau,ssa,g,pmatrix,tauI,ssaI,gI,pmatrixI,tauL,ssaL,gL,pmatrixL,pe,te,ze,vza,sza,raa,flux_factor,albedo = args
 
-        if (ich == 0) and (sob == 0):
-            # Define global dataset coordinates
-            coords = {
-                'lev':     np.arange(self.nlev),
-                'leve':    np.arange(self.nlev + 1),
-                'nobs':    np.arange(self.nbatch),
-                'ang':     np.arange(self.ang),
-                'ch':      [ich],
-                'nkernel': np.arange(3),
-                'nparam':  np.arange(2),
-                'npol':    np.arange(6),
-            }
+        # Number of obs in this batch
+        nbatch = eob - sob
 
-            # Map variable names to (dimensions, data, attributes)
-            data_vars = {
-                'wavelength':     (['ch'], [self.channels[ich]], ARGS_ATTS['ch']),
-                'angle':          (['ang'], self.angles.data, ARGS_ATTS['ang']),
+        # Define global dataset coordinates
+        coords = {
+            'lev':     np.arange(self.nlev),
+            'leve':    np.arange(self.nlev + 1),
+            'nobs':    np.arange(nbatch),
+            'ang':     np.arange(self.ang),
+            'ch':      [ich],
+            'nkernel': np.arange(3),
+            'nparam':  np.arange(2),
+            'npol':    np.arange(6),
+        }
 
-                # 1-D Variables
-                'DEPOL_RATIO':    (['ch'], depol_ratio, ARGS_ATTS['depol']),
-                'VZA':            (['nobs'], vza, ARGS_ATTS['vza']),
-                'SZA':            (['nobs'], sza, ARGS_ATTS['sza']),
-                'RAA':            (['nobs'], raa, ARGS_ATTS['raa']),
-                'IOBS':           (['nobs'], iobs, {'long_name': 'Original indices of valid observations'}), 
+        # Map variable names to (dimensions, data, attributes)
+        data_vars = {
 
-                # 2-D Variables
-                'PE':             (['leve', 'nobs'], pe, ARGS_ATTS['pe']),
-                'TE':             (['leve', 'nobs'], te, ARGS_ATTS['te']),
-                'ZE':             (['leve', 'nobs'], ze, ARGS_ATTS['ze']),
+            # 1-D Variables
+            'VZA':            (['nobs'], vza, ARGS_ATTS['vza']),
+            'SZA':            (['nobs'], sza, ARGS_ATTS['sza']),
+            'RAA':            (['nobs'], raa, ARGS_ATTS['raa']),
+            'IOBS':           (['nobs'], iobs, {'long_name': 'Original indices of valid observations'}), 
 
-                # 3-D Variables
-                'ROT':            (['lev', 'nobs', 'ch'], rot, ARGS_ATTS['rot']),
-                'TAU':            (['lev', 'nobs', 'ch'], tau.transpose(0, 2, 1), ARGS_ATTS['tau']),
-                'SSA':            (['lev', 'nobs', 'ch'], ssa.transpose(0, 2, 1), ARGS_ATTS['ssa']),
-                'G':              (['lev', 'nobs', 'ch'], g.transpose(0, 2, 1), ARGS_ATTS['g']),
+            # 2-D Variables
+            'PE':             (['leve', 'nobs'], pe, ARGS_ATTS['pe']),
+            'TE':             (['leve', 'nobs'], te, ARGS_ATTS['te']),
+            'ZE':             (['leve', 'nobs'], ze, ARGS_ATTS['ze']),
 
-                # 5-D Variable
-                'PMATRIX':        (['lev', 'ang', 'npol', 'nobs', 'ch'], pmatrix.transpose(0, 3, 4, 2, 1), ARGS_ATTS['pmatrix']),
-            }
+            # 3-D Variables
+            'ROT':            (['lev', 'nobs', 'ch'], rot, ARGS_ATTS['rot']),
+            'TAU':            (['lev', 'nobs', 'ch'], tau.transpose(0, 2, 1), ARGS_ATTS['tau']),
+            'SSA':            (['lev', 'nobs', 'ch'], ssa.transpose(0, 2, 1), ARGS_ATTS['ssa']),
+            'G':              (['lev', 'nobs', 'ch'], g.transpose(0, 2, 1), ARGS_ATTS['g']),
 
-            if surface_type == 'RTLS':
-                data_vars['RTLS_PARAM'] = (['nparam', 'nobs', 'ch'], param.transpose(0,2,1), ARGS_ATTS['param'])
-                data_vars['RTLS_KERNEL_WT'] = (['nkernel', 'nobs', 'ch'], kernel_wt.transpose(0,2,1), ARGS_ATTS['kernel_wt'])
-            elif surface_type == 'LAMBERTIAN':
-                albedo_array = np.full((self.nbatch, 1), albedo)
-                data_vars['ALBEDO'] = (['nobs', 'ch'], albedo_array, ARGS_ATTS['albedo'])
+            # 5-D Variable
+            'PMATRIX':        (['lev', 'ang', 'npol', 'nobs', 'ch'], pmatrix.transpose(0, 3, 4, 2, 1), ARGS_ATTS['pmatrix']),
+        }
 
-            # create xarray data arrays of inputs
-            # ------------------------------------
+        if surface_type == 'RTLS':
+            data_vars['RTLS_PARAM'] = (['nparam', 'nobs', 'ch'], param.transpose(0,2,1), ARGS_ATTS['param'])
+            data_vars['RTLS_KERNEL_WT'] = (['nkernel', 'nobs', 'ch'], kernel_wt.transpose(0,2,1), ARGS_ATTS['kernel_wt'])
+        elif surface_type == 'LAMBERTIAN':
+            albedo_array = np.full((self.nbatch, 1), albedo)
+            data_vars['ALBEDO'] = (['nobs', 'ch'], albedo_array, ARGS_ATTS['albedo'])
 
-            # Create dataset
-            ds = xr.Dataset(
-                data_vars=data_vars,
-                coords=coords,
-                attrs={
-                    'title': 'VLIDORT-GEOS-SBG Simulator Input Arguments',
-                    'institution': 'NASA/Goddard Space Flight Center',
-                    'source': 'Global Model and Assimilation Office',
-                    'history': 'VLIDORT inputs derived from a GEOS simulation',
-                    'references': 'n/a',
-                    'contact': 'Patricia Castellanos <patricia.castellanos@nasa.gov>',
-                    'Conventions': 'CF',
-                    'inFile': self.inFile,
-                }
-            )
+        # Variables WITHOUT nobs dimension (only written once)
+        static_vars = {
+            'wavelength': (['ch'], [self.channels[ich]], ARGS_ATTS['ch']),
+            'angle':      (['ang'], self.angles.data, ARGS_ATTS['ang']),
+            'DEPOL_RATIO': (['ch'], depol_ratio, ARGS_ATTS['depol']),
+        }
 
 
-            # Generate encoding dictionary for everything except wavelength & angle
-            vars_to_encode = [k for k in data_vars.keys() if k not in ('wavelength', 'angle')]
-            var_encoding = {"zlib": True, "_FillValue": self.MISSING, "dtype": "f4"}
-            encoding = {var: var_encoding for var in vars_to_encode}
 
-            # Write netcdf file
-            ds.to_netcdf(
-                path=self.argsFile,
-                format='NETCDF4',
-                engine='h5netcdf',
-                encoding=encoding,
-                unlimited_dims=['nobs', 'ch']
-            )
-
+        # create xarray data arrays of inputs
+        # ------------------------------------
+        if sob == 0:        
+            all_vars = {**data_vars, **static_vars}
         else:
-            #  Append along channel dimension
-            nc = ncDataset(self.argsFile,mode='a')
+            all_vars = data_vars
 
-            # 1-D variables
-            nc.variables['DEPOL_RATIO'][ich] = depol_ratio
+        # Create dataset
+        ds = xr.Dataset(
+            data_vars=all_vars,
+            coords=coords,
+            attrs={
+                'title': 'VLIDORT-GEOS-SBG Simulator Input Arguments',
+                'institution': 'NASA/Goddard Space Flight Center',
+                'source': 'Global Model and Assimilation Office',
+                'history': 'VLIDORT inputs derived from a GEOS simulation',
+                'references': 'n/a',
+                'contact': 'Patricia Castellanos <patricia.castellanos@nasa.gov>',
+                'Conventions': 'CF',
+                'inFile': self.inFile,
+            }
+        )
 
-            for name, data in [('VZA', vza), ('SZA', sza), ('RAA', raa), ('IOBS', iobs)]:
-                nc.variables[name][sob:eob] = data
 
-            # 2-D variables
-            for name, data in [('PE', pe), ('TE', te), ('ZE', ze)]:
-                nc.variables[name][:, sob:eob] = data
+        # Generate encoding dictionary for everything except wavelength & angle
+        compressor = Blosc(cname='lz4', clevel=1, shuffle=Blosc.BITSHUFFLE)
+        vars_to_encode = [k for k in data_vars.keys() if k not in ('wavelength', 'angle')]
+        var_encoding = {"compressor": compressor, "dtype": "f4"}
 
-            # 3-D variables
-            nc.variables['ROT'][:, sob:eob, ich] = rot
+        encoding = {var: var_encoding for var in vars_to_encode}
 
-            # 3-D variables requiring transpose(0, 2, 1)
-            transposed_3d = [
-                ('TAU', tau), ('SSA', ssa), ('G', g),
-                ('RTLS_PARAM', param), ('RTLS_KERNEL_WT', kernel_wt)
-            ]
-            for name, data in transposed_3d:
-                nc.variables[name][:, sob:eob, ich] = data.transpose(0, 2, 1)
+        # chunk data
+        chunk_dict = {
+            'nobs': 500, 
+            'ang': 371, 
+            'lev': 72, 
+            'leve': 73, 
+            'npol': 6, 
+            'nkernel': 3, 
+            'nparam': 2,
+        }
+        ds_chunked = ds.chunk({k: v for k, v in chunk_dict.items() if k in ds.dims})
+        # Remove conflicting missing_value from attrs
+        for var in ds_chunked.data_vars:
+            if 'missing_value' in ds_chunked[var].attrs:
+                del ds_chunked[var].attrs['missing_value']
 
-            # 5-D variables
-            nc.variables['PMATRIX'][:, :, :, sob:eob, ich] = pmatrix.transpose(0, 3, 4, 2, 1)
+        channel_file = self.argsFile.replace('.zarr', f'_ch{ich:03d}.zarr')
 
-            nc.close()
+        if sob == 0:
+            # First batch: create new file
+            ds_chunked.to_zarr(channel_file, mode='w', encoding=encoding)
+        else:
+            # Subsequent batches: append along nobs
+            ds_chunked.to_zarr(channel_file, append_dim='nobs')
 
     #---
     def writeNC (self):

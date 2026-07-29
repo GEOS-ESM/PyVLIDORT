@@ -24,6 +24,7 @@ from pyobs.constants import MAPL_KAPPA as KAPPA
 from .vlidort import WrapperFuncs
 from py_vlidort import AOP_
 from pyobs.mietable import _rh, _drh  # Import the RH array and step size
+import glob
 
 class INPUTS_VLIDORT(G2GAOP):
     """
@@ -68,11 +69,14 @@ class INPUTS_VLIDORT(G2GAOP):
                 }
             )
         else:
-            filename = self.argsFile
-            if self.verbose:
-                print(f'opening file {filename}')
-            ds = xr.open_dataset(filename, mode='r')
+            channel_files = sorted(glob.glob(self.argsFile.replace('.zarr', '_ch*.zarr')))
 
+            if self.verbose:
+                print(f'reading ROT from {len(channel_files)} channel files from {self.argsFile}')
+
+            ds = xr.open_mfdataset(channel_files, engine='zarr',
+                                    concat_dim='ch', combine='nested',
+                                    data_vars=['ROT', 'DEPOL_RATIO'])
 
             ROT = ds['ROT']
             depol_ratio = ds['DEPOL_RATIO']
@@ -360,10 +364,12 @@ class INPUTS_VLIDORT(G2GAOP):
             )
 
         else:
-            filename = self.argsFile
+            channel_files = sorted(glob.glob(self.argsFile.replace('.zarr', '_ch*.zarr')))
+
             if self.verbose:
-                print(f'opening file {filename}')
-            ds = xr.open_dataset(filename, mode='r')
+                print(f'reading edge vars from file {channel_files[0]}')
+
+            ds = xr.open_zarr(channel_files[0])[['PE', 'ZE', 'TE']]
 
             pe = ds['PE']
             ze = ds['ZE']
