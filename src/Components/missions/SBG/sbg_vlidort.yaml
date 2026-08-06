@@ -5,7 +5,7 @@ orbit_yaml: ssd650.yaml
 NSTOKES: 3
 DO_SPHERICITY: False
 DO_FULLRAD: True    # FULLRAD means MS+SS, False means do SS only
-ALBEDOTYPES: 
+ALBEDOTYPES:
     - AMES_BRDF
 MTFILE: 'm2_aop.yaml'
 WRITE_INPUTS: True
