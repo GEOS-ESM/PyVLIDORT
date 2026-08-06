@@ -460,10 +460,10 @@ if __name__ == "__main__":
             # Write RT outputs
             rt_outFile = outFile.replace('.nc4', f'_ch{ich_start:03d}-{ich_end:03d}.nc4')
             vlidort.outFile = rt_outFile
-            vlidort.writeNC()
+            vlidort.writeNC(ich_start=ich_start, ich_end=ich_end)
             
-            pool.close()
-            pool.join()
+            p.close()
+            p.join()
 
 
         date += Dt

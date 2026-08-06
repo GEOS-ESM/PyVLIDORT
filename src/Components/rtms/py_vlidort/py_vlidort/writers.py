@@ -190,24 +190,35 @@ class WRITERS(object):
             ds_chunked.to_zarr(channel_file, append_dim='nobs')
 
     #---
-    def writeNC (self):
+    def writeNC (self, ich_start=None, ich_end=None):
         """
         Write a NetCDF file vlidort output
         """
 
         os.makedirs(os.path.dirname(self.outFile),exist_ok=True)
 
+        # Determine channel range
+        if ich_start is None:
+            ich_start = 0
+        if ich_end is None:
+            ich_end = self.nch
+
+        # Subset to only processed channels
+        ch_slice = slice(ich_start, ich_end)
+        nch_out = ich_end - ich_start
+        channels_out = self.channels[ich_start:ich_end]
+
         # key -> (Data source, OUT_ATTS key)
         variables_map = {
-            'toa_reflectance':    (self.reflectance,    'toa'),
-            'I':                  (self.I,              'I'),
-            'Q':                  (self.Q,              'Q'),
-            'U':                  (self.U,              'U'),
-            'surf_reflectance':   (self.surf_reflectance, 'sref'),
-            'surf_reflectance_Q': (self.BR_Q,           'srefq'),
-            'surf_reflectance_U': (self.BR_U,           'srefu'),
-            'ts_toa_reflectance': (self.ts_reflectance, 'ts_toa'),
-            'ts_I':               (self.ts_I,           'ts_I'),
+            'toa_reflectance':    (self.reflectance[:, ch_slice],    'toa'),
+            'I':                  (self.I[:, ch_slice],              'I'),
+            'Q':                  (self.Q[:, ch_slice],              'Q'),
+            'U':                  (self.U[:, ch_slice],              'U'),
+            'surf_reflectance':   (self.surf_reflectance[:, ch_slice], 'sref'),
+            'surf_reflectance_Q': (self.BR_Q[:, ch_slice],           'srefq'),
+            'surf_reflectance_U': (self.BR_U[:, ch_slice],           'srefu'),
+            'ts_toa_reflectance': (self.ts_reflectance[:, ch_slice], 'ts_toa'),
+            'ts_I':               (self.ts_I[:, ch_slice],           'ts_I'),
         }
 
         # build data_vars dictionary
@@ -215,13 +226,13 @@ class WRITERS(object):
             name: (["nobs", "ch"], data, OUT_ATTS[attr_key])
             for name, (data, attr_key) in variables_map.items()
         }
-        data_vars['wavelength'] = (['ch'], self.channels, OUT_ATTS['ch'])
+        data_vars['wavelength'] = (['ch'], channels_out, OUT_ATTS['ch'])
 
         #  create output dataset
         ds = xr.Dataset(
             data_vars=data_vars,
             coords={
-                'ch': np.arange(self.nch)
+                'ch': np.arange(nch_out)
             },
             attrs={
                 'title': 'VLIDORT-GEOS-SBG Simulator',
@@ -232,6 +243,8 @@ class WRITERS(object):
                 'contact': 'Patricia Castellanos <patricia.castellanos@nasa.gov>',
                 'Conventions': 'CF',
                 'inFile': self.inFile,
+                'ich_start': ich_start,
+                'ich_end': ich_end,
             }
         )
 
