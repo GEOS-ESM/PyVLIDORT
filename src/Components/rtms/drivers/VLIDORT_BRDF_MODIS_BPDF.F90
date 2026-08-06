@@ -98,7 +98,7 @@ module VLIDORT_BRDF_MODIS_BPDF
 
     
     type(VLIDORT_scat) :: SCAT
-    type(VLIDORT_output_vector)  :: output
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -197,18 +197,18 @@ module VLIDORT_BRDF_MODIS_BPDF
           cycle
         end if
 
-        call VLIDORT_Run_Vector (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
-          radiance_VL_SURF(j,i)    = output%BOA_radiance
-          reflectance_VL_SURF(j,i) = output%BOA_reflectance
-          Q(j,i)                   = output%BOA_Q
-          U(j,i)                   = output%BOA_U                          
+          radiance_VL_SURF(j,i)    = output%BOA_radiance(1)
+          reflectance_VL_SURF(j,i) = output%BOA_reflectance(1)
+          Q(j,i)                   = output%BOA_Q(1)
+          U(j,i)                   = output%BOA_U(1)                       
         else
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)                
         end if
         
         if ( ier /= 0 ) then
@@ -321,7 +321,7 @@ module VLIDORT_BRDF_MODIS_BPDF
 
     
     type(VLIDORT_scat) :: SCAT
-    type(VLIDORT_output_vector)  :: output
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -424,18 +424,18 @@ module VLIDORT_BRDF_MODIS_BPDF
           cycle
         end if
 
-        call VLIDORT_Run_Vector (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
-          radiance_VL_SURF(j,i)    = output%BOA_radiance
-          reflectance_VL_SURF(j,i) = output%BOA_reflectance
-          Q(j,i)                   = output%BOA_Q
-          U(j,i)                   = output%BOA_U                          
+          radiance_VL_SURF(j,i)    = output%BOA_radiance(1)
+          reflectance_VL_SURF(j,i) = output%BOA_reflectance(1)
+          Q(j,i)                   = output%BOA_Q(1)
+          U(j,i)                   = output%BOA_U(1)                       
         else
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
         end if
         
         if ( ier /= 0 ) then
@@ -528,7 +528,7 @@ module VLIDORT_BRDF_MODIS_BPDF
 
     
     type(VLIDORT_scat) :: SCAT
-    type(VLIDORT_output_vector)  :: output
+    type(VLIDORT_output)  :: output
 
     rc = 0
     ier = 0
@@ -610,18 +610,18 @@ module VLIDORT_BRDF_MODIS_BPDF
           cycle
         end if
 
-        call VLIDORT_Run_Vector (SCAT, output, ier)
+        call VLIDORT_Run (SCAT, output, ier)
 
         if (SCAT%DO_BOA) then
-          radiance_VL_SURF(j,i)    = output%BOA_radiance
-          reflectance_VL_SURF(j,i) = output%BOA_reflectance
-          Q(j,i)                   = output%BOA_Q
-          U(j,i)                   = output%BOA_U                          
+          radiance_VL_SURF(j,i)    = output%BOA_radiance(1)
+          reflectance_VL_SURF(j,i) = output%BOA_reflectance(1)
+          Q(j,i)                   = output%BOA_Q(1)
+          U(j,i)                   = output%BOA_U(1)                       
         else
-          radiance_VL_SURF(j,i)    = output%radiance
-          reflectance_VL_SURF(j,i) = output%reflectance
-          Q(j,i)                   = output%Q
-          U(j,i)                   = output%U                
+          radiance_VL_SURF(j,i)    = output%radiance(1)
+          reflectance_VL_SURF(j,i) = output%reflectance(1)
+          Q(j,i)                   = output%Q(1)
+          U(j,i)                   = output%U(1)             
         end if
         
         if ( ier /= 0 ) then

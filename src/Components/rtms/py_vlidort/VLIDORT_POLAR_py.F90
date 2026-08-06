@@ -40,13 +40,14 @@ subroutine ROT_CALC(km, nch, nobs, channels, pe, he, te, &
 
 end subroutine ROT_CALC
 
-subroutine VECTOR_BRDF_MODIS_CLOUD(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nkernel,nparam, &
-                     ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+
+subroutine BRDF_MODIS_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, nPol, NSTOKES, nkernel,nparam, &
+                     InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
                      pe, he, te, kernel_wt, param, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
 
-    use VLIDORT_BRDF_MODIS, only: VLIDORT_Vector_LandMODIS_Cloud
+    use VLIDORT_BRDF_MODIS, only: VLIDORT_LandMODIS_pmatrix
     implicit None
 
   ! !INPUT PARAMETERS:
@@ -54,12 +55,115 @@ subroutine VECTOR_BRDF_MODIS_CLOUD(km, nch, nobs, channels, nstreams, plane_para
     integer,          intent(in)            :: km    ! number of vertical levels
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
+
+    integer,          intent(in)            :: nAng  ! number of phase function angles
+    integer,          intent(in)            :: nPol  ! number of scattering matrix components
+    integer,          intent(in)            :: nstreams  ! number of half space streams
+    integer,          intent(in)            :: NSTOKES   ! number of stokes vectors. 1 =scalar 3 or 4 =vector
+
+    integer,          intent(in)            :: nkernel ! number of kernels
+    integer,          intent(in)            :: nparam  ! number of kernel parameters
+
+    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+    real*8,           intent(in)            :: InAngles(nAng)   ! phase matrix angles
+
+  !                                                   ! --- Rayleigh Parameters ---
+    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+
+!                                                   ! --- Trace Gas Absorption ---
+    real*8,           intent(in)            :: alpha(km,nch,nobs) ! trace gas absoprtion optical thickness
+
+  !                                                   ! --- Aerosol Optical Properties ---
+    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo
+    real*8,           intent(in)            :: pmatrix(km,nch,nobs,nAng,nPol) !components of the scat phase matrix
+
+  !                                                   ! --- Ice Cloud Optical Properties ---
+    real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud optical depth
+    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
+    real*8,           intent(in)            :: pmatrixI(km,nch,nobs,nAng,nPol) ! ice cloud components of the scat phase matrix
+
+  !                                                   ! --- Liquid Cloud Optical Properties ---
+    real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud optical depth
+    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
+    real*8,           intent(in)            :: pmatrixL(km,nch,nobs,nAng,nPol) ! liquid cloud components of the scat phase matrix
+
+
+    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+
+    real*8,           intent(in)            :: kernel_wt(nkernel,nch,nobs)    ! kernel weights (/fiso,fgeo,fvol/)
+    real*8,           intent(in)            :: param(nparam,nch,nobs)         ! Li-Sparse parameters
+                                                                              ! param1 = crown relative height (h/b)
+                                                                              ! param2 = shape parameter (b/r)
+
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom)
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom)
+
+    real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
+    integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
+
+  ! !OUTPUT PARAMETERS:
+    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch, ngeom) ! TOA reflectance from VLIDORT using surface module
+    integer,          intent(out)           :: rc                             ! return code
+
+    real*8,           intent(out)           :: BR(nobs,nch, ngeom)                   ! bidirectional reflectance
+    real*8,           intent(out)           :: Q(nobs, nch, ngeom)                   ! Stokes parameter Q
+    real*8,           intent(out)           :: U(nobs, nch, ngeom)                   ! Stokes parameter U
+    real*8,           intent(out)           :: BR_Q(nobs, nch, ngeom)                ! Stokes parameter Q
+    real*8,           intent(out)           :: BR_U(nobs, nch, ngeom)                ! Stokes parameter U
+
+
+    call VLIDORT_LandMODIS_pmatrix (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, &
+                                   nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
+                                   pe, he, te, &
+                                   kernel_wt, param, &
+                                   solar_zenith, &
+                                   relat_azymuth, &
+                                   sensor_zenith, &
+                                   flux_factor, &
+                                   MISSING,verbose,debug, &
+                                   radiance_VL_SURF, &
+                                   reflectance_VL_SURF, &
+                                   BR, Q, U, BR_Q, BR_U, rc )
+
+
+end subroutine BRDF_MODIS_PMATRIX
+
+
+subroutine BRDF_MODIS_PMOM(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, nPol, NSTOKES, nkernel,nparam, &
+                     ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+                     pe, he, te, kernel_wt, param, &
+                     solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+
+    use VLIDORT_BRDF_MODIS, only: VLIDORT_LandMODIS_pmom
+    implicit None
+
+  ! !INPUT PARAMETERS:
+
+    integer,          intent(in)            :: km    ! number of vertical levels
+    integer,          intent(in)            :: nch   ! number of channels
+    integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
+
+    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
     integer,          intent(in)            :: nMom  ! number of phase function moments
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
     integer,          intent(in)            :: nstreams  ! number of half space streams
+    integer,          intent(in)            :: NSTOKES   ! number of stokes vectors. 1 =scalar 3 or 4 =vector
 
     integer,          intent(in)            :: nkernel ! number of kernels
     integer,          intent(in)            :: nparam  ! number of kernel parameters
@@ -71,7 +175,7 @@ subroutine VECTOR_BRDF_MODIS_CLOUD(km, nch, nobs, channels, nstreams, plane_para
     real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
 
 !                                                   ! --- Trace Gas Absorption ---
-    real*8,           intent(in)  :: alpha(km,nobs,nch) ! trace gas absoprtion optical thickness
+    real*8,           intent(in)            :: alpha(km,nch,nobs) ! trace gas absoprtion optical thickness
 
   !                                                   ! --- Aerosol Optical Properties ---
     real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
@@ -99,282 +203,207 @@ subroutine VECTOR_BRDF_MODIS_CLOUD(km, nch, nobs, channels, nstreams, plane_para
                                                                               ! param1 = crown relative height (h/b)
                                                                               ! param2 = shape parameter (b/r)
 
-    real*8,           intent(in)            :: solar_zenith(nobs)
-    real*8,           intent(in)            :: relat_azymuth(nobs)
-    real*8,           intent(in)            :: sensor_zenith(nobs)
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom)
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom)
 
     real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch,ngeom) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U
+    real*8,           intent(out)           :: BR(nobs,nch,ngeom)                   ! bidirectional reflectance
+    real*8,           intent(out)           :: Q(nobs, nch,ngeom)                   ! Stokes parameter Q
+    real*8,           intent(out)           :: U(nobs, nch,ngeom)                   ! Stokes parameter U
+    real*8,           intent(out)           :: BR_Q(nobs, nch,ngeom)                ! Stokes parameter Q
+    real*8,           intent(out)           :: BR_U(nobs, nch,ngeom)                ! Stokes parameter U
 
 
-    call VLIDORT_Vector_LandMODIS_Cloud (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+    call VLIDORT_LandMODIS_pmom (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
+                                   nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                                    pe, he, te, &
                                    kernel_wt, param, &
                                    solar_zenith, &
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose,debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
                                    BR, Q, U, BR_Q, BR_U, rc )
 
 
-end subroutine VECTOR_BRDF_MODIS_CLOUD
-
-subroutine VECTOR_BRDF_MODIS(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nkernel,nparam, &
-                     ROT, depol, tau, ssa, pmom, pe, he, te, kernel_wt, param, &
-                     solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_MODIS, only: VLIDORT_Vector_LandMODIS  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-
-    integer,          intent(in)            :: nkernel ! number of kernels
-    integer,          intent(in)            :: nparam  ! number of kernel parameters
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-  !                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: kernel_wt(nkernel,nch,nobs)    ! kernel weights (/fiso,fgeo,fvol/)
-    real*8,           intent(in)            :: param(nparam,nch,nobs)         ! Li-Sparse parameters 
-                                                                              ! param1 = crown relative height (h/b)
-                                                                              ! param2 = shape parameter (b/r)
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
+end subroutine BRDF_MODIS_PMOM
 
 
-    call VLIDORT_Vector_LandMODIS (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   kernel_wt, param, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   BR, Q, U, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_BRDF_MODIS
-
-
-subroutine VECTOR_BRDF_MODIS_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nkernel,nparam,nparam_bpdf, &
-                     ROT, depol, tau, ssa, pmom, pe, he, te, kernel_wt, RTLSparam, BPDFparam, &
-                     solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_MODIS_BPDF, only: VLIDORT_Vector_LandMODIS_BPDF 
-
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-
-    integer,          intent(in)            :: nkernel ! number of kernels
-    integer,          intent(in)            :: nparam  ! number of kernel parameters
-    integer,          intent(in)            :: nparam_bpdf  ! number of BPDF kernel parameters
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: kernel_wt(nkernel,nch,nobs)    ! kernel weights (/fiso,fgeo,fvol/)
-    real*8,           intent(in)            :: RTLSparam(nparam,nch,nobs)         ! Li-Sparse parameters 
-                                                                              ! param1 = crown relative height (h/b)
-                                                                              ! param2 = shape parameter (b/r)
-    real*8,           intent(in)            :: BPDFparam(nparam_bpdf,nch,nobs)     ! BPRDF parameters 
-                                                                              ! param1 = Refractive index of water (1.5)
-                                                                              ! param2 = NDVI , must be <=1 or >=1
-                                                                              ! param3 = Scaling factor (C, from Maignan 2009 RSE Table 1)                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_LandMODIS_BPDF (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   kernel_wt, RTLSparam, BPDFparam, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   BR, Q, U, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_BRDF_MODIS_BPDF
-
-subroutine VECTOR_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nparam, &
-                     ROT, depol, tau, ssa, pmom, pe, he, te, BPDFparam, &
-                     solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_MODIS_BPDF, only: VLIDORT_Vector_BPDF 
-
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-
-    integer,          intent(in)            :: nparam  ! number of kernel parameters
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: BPDFparam(nparam,nch,nobs)     ! BPRDF parameters 
-                                                                              ! param1 = Refractive index of water (1.5)
-                                                                              ! param2 = NDVI , must be <=1 or >=1
-                                                                              ! param3 = Scaling factor (C, from Maignan 2009 RSE Table 1)                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_BPDF (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   BPDFparam, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   BR, Q, U, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_BPDF
-
-
-subroutine VECTOR_LAMBERT_CLOUD(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol, &
-                     ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+!subroutine VECTOR_BRDF_MODIS_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nkernel,nparam,nparam_bpdf, &
+!                     ROT, depol, tau, ssa, pmom, pe, he, te, kernel_wt, RTLSparam, BPDFparam, &
+!                     solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_MODIS_BPDF, only: VLIDORT_Vector_LandMODIS_BPDF 
+!
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!
+!    integer,          intent(in)            :: nkernel ! number of kernels
+!    integer,          intent(in)            :: nparam  ! number of kernel parameters
+!    integer,          intent(in)            :: nparam_bpdf  ! number of BPDF kernel parameters
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: kernel_wt(nkernel,nch,nobs)    ! kernel weights (/fiso,fgeo,fvol/)
+!    real*8,           intent(in)            :: RTLSparam(nparam,nch,nobs)         ! Li-Sparse parameters 
+!                                                                              ! param1 = crown relative height (h/b)
+!                                                                              ! param2 = shape parameter (b/r)
+!    real*8,           intent(in)            :: BPDFparam(nparam_bpdf,nch,nobs)     ! BPRDF parameters 
+!                                                                              ! param1 = Refractive index of water (1.5)
+!                                                                              ! param2 = NDVI , must be <=1 or >=1
+!                                                                              ! param3 = Scaling factor (C, from Maignan 2009 RSE Table 1)                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
+!    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_LandMODIS_BPDF (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
+!                                   kernel_wt, RTLSparam, BPDFparam, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   BR, Q, U, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_BRDF_MODIS_BPDF
+!
+!subroutine VECTOR_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol,nparam, &
+!                     ROT, depol, tau, ssa, pmom, pe, he, te, BPDFparam, &
+!                     solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_MODIS_BPDF, only: VLIDORT_Vector_BPDF 
+!
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!
+!    integer,          intent(in)            :: nparam  ! number of kernel parameters
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: BPDFparam(nparam,nch,nobs)     ! BPRDF parameters 
+!                                                                              ! param1 = Refractive index of water (1.5)
+!                                                                              ! param2 = NDVI , must be <=1 or >=1
+!                                                                              ! param3 = Scaling factor (C, from Maignan 2009 RSE Table 1)                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
+!    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_BPDF (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
+!                                   BPDFparam, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   BR, Q, U, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_BPDF
+!
+!
+subroutine LAMBERT_PMOM(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
+                     nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                      pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
 
-    use VLIDORT_LAMBERT, only: VLIDORT_Vector_Lambert_Cloud
+    use VLIDORT_LAMBERT, only: VLIDORT_Lambert_pmom
     implicit None
 
   ! !INPUT PARAMETERS:
@@ -382,12 +411,15 @@ subroutine VECTOR_LAMBERT_CLOUD(km, nch, nobs, channels, nstreams, plane_paralle
     integer,          intent(in)            :: km    ! number of vertical levels
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
     integer,          intent(in)            :: nMom  ! number of phase function moments
     integer,          intent(in)            :: nPol  ! number of scattering matrix components
     integer,          intent(in)            :: nstreams  ! number of half space streams
+    integer,          intent(in)            :: NSTOKES   ! number of stokes vectors. 1 =scalar 3 or 4 =vector
 
     real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
 
@@ -416,65 +448,68 @@ subroutine VECTOR_LAMBERT_CLOUD(km, nch, nobs, channels, nstreams, plane_paralle
     real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
     real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
 
-    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
+    real*8, target,   intent(in)            :: albedo(nobs,nch,ngeom)       ! surface albedo
 
-    real*8,           intent(in)            :: solar_zenith(nobs)
-    real*8,           intent(in)            :: relat_azymuth(nobs)
-    real*8,           intent(in)            :: sensor_zenith(nobs)
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom)
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom)
 
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_VL_SURF(nobs,nch,ngeom) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U
+    real*8,           intent(out)           :: Q(nobs,nch,ngeom)                   ! Stokes parameter Q
+    real*8,           intent(out)           :: U(nobs,nch,ngeom)                   ! Stokes parameter U
 
 
-    call VLIDORT_Vector_Lambert_Cloud (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+    call VLIDORT_Lambert_pmom (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nMom, &
+                                   nPol, NSTOKES, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
                                    pe, he, te, &
                                    albedo, &
                                    solar_zenith, &
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose, debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
                                    Q, U, rc )
 
 
-end subroutine VECTOR_LAMBERT_CLOUD
+end subroutine LAMBERT_PMOM
 
-
-
-
-subroutine VECTOR_LAMBERT(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol, &
-                     ROT, depol, alpha, tau, ssa, pmom, pe, he, te, albedo, &
+subroutine LAMBERT_PMATRIX(km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, &
+                     nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
+                     pe, he, te, albedo, &
                      solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
+                     MISSING,verbose,debug, radiance_VL_SURF,reflectance_VL_SURF, Q, U, rc)
 
-    use VLIDORT_LAMBERT, only: VLIDORT_Vector_Lambert  
+    use VLIDORT_LAMBERT, only: VLIDORT_Lambert_pmatrix
     implicit None
 
   ! !INPUT PARAMETERS:
 
-    integer,          intent(in)            :: km    ! number of vertical levels 
+    integer,          intent(in)            :: km    ! number of vertical levels
     integer,          intent(in)            :: nch   ! number of channels
     integer,          intent(in)            :: nobs  ! number of observations
+    integer,          intent(in)            :: ngeom  ! number of geometries
 
     logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+    logical,          intent(in)            :: do_fullrad ! do both SS and MS, if false do SS only
 
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+    integer,          intent(in)            :: nAng  ! number of phase function moments
+    integer,          intent(in)            :: nPol  ! number of scattering matrix components
     integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
+    integer,          intent(in)            :: NSTOKES   ! number of stokes vectors. 1 =scalar 3 or 4 =vector
+
     real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+    real*8, target,   intent(in)            :: InAngles(nAng)   ! phase matrix angles
 
 !                                                   ! --- Rayleigh Parameters ---
     real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
@@ -483,663 +518,675 @@ subroutine VECTOR_LAMBERT(km, nch, nobs, channels, nstreams, plane_parallel, nMo
     real*8,           intent(in)            :: alpha(km,nobs,nch)       ! trace gas absorption
   !                                                   ! --- Aerosol Optical Properties ---
     real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    real*8,           intent(in)  :: flux_factor(nch,nobs) ! solar flux (F0)
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_Lambert (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmom, pe, he, te, &
-                                   albedo, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   flux_factor, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   Q, U, rc )  
-
-
-end subroutine VECTOR_LAMBERT
-
-subroutine VECTOR_LAMBERT_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol, nparam, &
-                     ROT, depol, tau, ssa, pmom, pe, he, te, albedo, BPDFparam, &
-                     solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_LAMBERT_BPDF, only: VLIDORT_Vector_Lambert_BPDF  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-
-    integer,          intent(in)            :: nparam  ! number of kernel parameters
-                     
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
-    real*8,           intent(in)            :: BPDFparam(nparam,nch,nobs)     ! BPRDF parameters 
-                                                                              ! param1 = Refractive index of water (1.5)
-                                                                              ! param2 = NDVI , must be <=1 or >=1
-                                                                              ! param3 = Scaling factor (C, from Maignan 2009 RSE Table 1)                         
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
-    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_Lambert_BPDF (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   albedo, BPDFparam, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   BR, Q, U, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_LAMBERT_BPDF
-
-
-subroutine SCALAR_LAMBERT(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol, &
-                     ROT, depol, tau, ssa, g, pmom, pe, he, te, albedo, &
-                     solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, rc)
-
-    use VLIDORT_LAMBERT, only: VLIDORT_Scalar_Lambert  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo  
-    real*8, target,   intent(in)            :: g(km,nch,nobs)   ! asymmetry factor  
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-
-
-    call VLIDORT_Scalar_Lambert (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, g, pmom, pe, he, te, &
-                                   albedo, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   rc )  
-
-
-end subroutine SCALAR_LAMBERT
-
-subroutine VECTOR_GissCX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
-                     nPol, ROT, depol, tau, ssa, pmom, pe, he, te, U10m, V10m, &
-                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
-                     BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_GissCX  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
-    real*8,           intent(in)            :: V10m(nobs)    
-    real*8,           intent(in)            :: mr(nch)       ! refractive index
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_GissCX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   U10m, V10m, mr, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   Q, U, BR, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_GissCX
-
-subroutine VECTOR_CX_CLOUD(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
-                     nPol, ROT, depol, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
-                     pe, he, te, U10m, V10m, &
-                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
-                     BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_CX_Cloud
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
     real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+    real*8,           intent(in)            :: pmatrix(km,nch,nobs,nAng,nPol) !components of the scat phase matrix
 
-  !                                                   ! --- ice cloud Optical Properties ---
-    real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud  optical depth
-    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
-    real*8,           intent(in)            :: pmomI(km,nch,nobs,nMom,nPol) !ice cloud components of the scat phase matrix
-
-  !                                                   ! --- liquid cloud Optical Properties ---
-    real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud  optical depth
-    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
-    real*8,           intent(in)            :: pmomL(km,nch,nobs,nMom,nPol) !liquid cloud components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
-    real*8,           intent(in)            :: V10m(nobs)
-    real*8,           intent(in)            :: mr(nch)       ! refractive index
-
-    real*8,           intent(in)            :: solar_zenith(nobs)
-    real*8,           intent(in)            :: relat_azymuth(nobs)
-    real*8,           intent(in)            :: sensor_zenith(nobs)
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U
-
-    call VLIDORT_Vector_CX_Cloud (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
-                                   pe, he, te, &
-                                   U10m, V10m, mr, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   Q, U, BR, BR_Q, BR_U, rc )
-
-
-end subroutine VECTOR_CX_CLOUD
-
-subroutine VECTOR_CX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
-                     nPol, ROT, depol, tau, ssa, pmom, pe, he, te, U10m, V10m, &
-                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
-                     BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_CX  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
-    real*8,           intent(in)            :: V10m(nobs)    
-    real*8,           intent(in)            :: mr(nch)       ! refractive index
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_CX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   U10m, V10m, mr, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   Q, U, BR, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_CX
-
-subroutine VECTOR_OCICX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
-                     nPol, ROT, depol, tau, ssa, pmom, pe, he, te, U10m, V10m, &
-                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
-                     BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_OCICX  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
-    real*8,           intent(in)            :: V10m(nobs)    
-    real*8,           intent(in)            :: mr(nch)       ! refractive index
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_OCICX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
-                                   U10m, V10m, mr, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   Q, U, BR, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_OCICX
-
-subroutine VECTOR_OCIGissCX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
-                     nPol, ROT, depol, alpha, tau, ssa, pmom, pe, he, te, U10m, V10m, &
-                     mr, solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
-                     BR, Q, U, BR_Q, BR_U, rc)
-
-    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_OCIGissCX  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-
-!                                                   ! --- Trace Gas Absorption---
-  real*8, target,   intent(in)              :: alpha(km,nobs,nch) ! trace gas absoprtion optical thickness
-
-!                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
-    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
-    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
-    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
-    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
-
-    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
-    real*8,           intent(in)            :: V10m(nobs)    
-    real*8,           intent(in)            :: mr(nch)       ! refractive index
-                         
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
-
-    real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
-
-    integer,          intent(in)            :: verbose
-
-  ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
-    integer,          intent(out)           :: rc                             ! return code
-
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-
-
-    call VLIDORT_Vector_OCIGissCX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmom, pe, he, te, &
-                                   U10m, V10m, mr, &
-                                   solar_zenith, &
-                                   relat_azymuth, &
-                                   sensor_zenith, &
-                                   flux_factor, &
-                                   MISSING,verbose, &
-                                   radiance_VL_SURF, &
-                                   reflectance_VL_SURF, &
-                                   Q, U, BR, BR_Q, BR_U, rc )  
-
-
-end subroutine VECTOR_OCIGissCX
-
-subroutine VECTOR_OCIGissCX_NOBM_Cloud(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
-                     nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
-                     pe, he, te, U10m, V10m, &
-                     mr, sleave, sleave_iso, sleave_adjust, &
-                     solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
-                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
-                     BR, Q, U, BR_Q, BR_U, rc, ADJUSTED_SLEAVE)
-
-    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_OCIGissCX_NOBM_CLOUD  
-    implicit None
-
-  ! !INPUT PARAMETERS:
-
-    integer,          intent(in)            :: km    ! number of vertical levels 
-    integer,          intent(in)            :: nch   ! number of channels
-    integer,          intent(in)            :: nobs  ! number of observations
-
-    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
-
-    integer,          intent(in)            :: nMom  ! number of phase function moments 
-    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
-    integer,          intent(in)            :: nstreams  ! number of half space streams
-                    
-    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
-
-!                                                   ! --- Rayleigh Parameters ---
-    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
-    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
-!                                                   ! Trace Gas Properties ---
-    real*8,           intent(in)            :: alpha(km,nobs,nch) ! trace gas absorption optical thickenss
-  !                                                   ! --- Aerosol Optical Properties ---
-    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
-    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
-
+  !                                                   ! --- Ice Cloud Optical Properties ---
     real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud optical depth
-    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmomI(km,nch,nobs,nMom,nPol) !components of the scat phase matrix    
+    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
+    real*8,           intent(in)            :: pmatrixI(km,nch,nobs,nAng,nPol) ! ice cloudcomponents of the scat phase matrix
 
+  !                                                   ! --- Liquid Cloud Optical Properties ---
     real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud optical depth
-    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! single scattering albedo    
-    real*8,           intent(in)            :: pmomL(km,nch,nobs,nMom,nPol) !components of the scat phase matrix    
-
+    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
+    real*8,           intent(in)            :: pmatrixL(km,nch,nobs,nAng,nPol) ! liquid cloudcomponents of the scat phase matrix
 
     real*8,           intent(in)            :: MISSING          ! MISSING VALUE
     real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
     real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
     real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
 
-    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
-    real*8,           intent(in)            :: V10m(nobs)    
-    real*8,           intent(in)            :: mr(nch)       ! refractive index
-    real*8,           intent(in)            :: sleave(nch,nobs)       ! sun normalized water leaving radiance from NOBM
-                                                          ! described and used in Gregg & Rousseaux 2017
-    logical,          intent(in)            :: sleave_iso
-    logical,          intent(in)            :: sleave_adjust 
-    real*8,           intent(in)            :: solar_zenith(nobs)  
-    real*8,           intent(in)            :: relat_azymuth(nobs) 
-    real*8,           intent(in)            :: sensor_zenith(nobs) 
+    real*8, target,   intent(in)            :: albedo(nobs,nch,ngeom)       ! surface albedo
 
-    real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
+    real*8,           intent(in)            :: solar_zenith(nobs,ngeom)
+    real*8,           intent(in)            :: relat_azymuth(nobs,ngeom)
+    real*8,           intent(in)            :: sensor_zenith(nobs,ngeom)
+
+    real*8,           intent(in)            :: flux_factor(nch) ! solar flux (F0)
 
     integer,          intent(in)            :: verbose
+    logical,          intent(in)            :: debug
 
   ! !OUTPUT PARAMETERS:
-    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
-    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch,ngeom)     ! TOA normalized radiance from VLIDORT using surface module
+    real*8,           intent(out)           :: reflectance_VL_SURF(nobs,nch,ngeom) ! TOA reflectance from VLIDORT using surface module
     integer,          intent(out)           :: rc                             ! return code
 
-    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
-    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
-    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
-    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
-    real*8,           intent(out)           :: ADJUSTED_SLEAVE(nobs,nch)
+    real*8,           intent(out)           :: Q(nobs,nch,ngeom)                   ! Stokes parameter Q
+    real*8,           intent(out)           :: U(nobs,nch,ngeom)                   ! Stokes parameter U
 
-    call VLIDORT_Vector_OCIGissCX_NOBM_CLOUD (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
-                                   nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
-                                   pe, he, te, U10m, V10m, &
-                                   mr, sleave, sleave_iso, sleave_adjust, &
+
+    call VLIDORT_Lambert_pmatrix (km, nch, nobs, ngeom, channels, nstreams, do_fullrad, plane_parallel, nAng, &
+                                   nPol, NSTOKES, InAngles, ROT, depol, alpha, tau, ssa, pmatrix, tauI, ssaI, pmatrixI, tauL, ssaL, pmatrixL, &
+                                   pe, he, te, &
+                                   albedo, &
                                    solar_zenith, &
                                    relat_azymuth, &
                                    sensor_zenith, &
                                    flux_factor, &
-                                   MISSING,verbose, &
+                                   MISSING,verbose,debug, &
                                    radiance_VL_SURF, &
                                    reflectance_VL_SURF, &
-                                   Q, U, BR, BR_Q, BR_U, rc, ADJUSTED_SLEAVE )  
+                                   Q, U, rc )
 
 
-end subroutine VECTOR_OCIGissCX_NOBM_Cloud
+end subroutine LAMBERT_PMATRIX
+
+!subroutine VECTOR_LAMBERT_BPDF(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol, nparam, &
+!                     ROT, depol, tau, ssa, pmom, pe, he, te, albedo, BPDFparam, &
+!                     solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_LAMBERT_BPDF, only: VLIDORT_Vector_Lambert_BPDF  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!
+!    integer,          intent(in)            :: nparam  ! number of kernel parameters
+!                     
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
+!    real*8,           intent(in)            :: BPDFparam(nparam,nch,nobs)     ! BPRDF parameters 
+!                                                                              ! param1 = Refractive index of water (1.5)
+!                                                                              ! param2 = NDVI , must be <=1 or >=1
+!                                                                              ! param3 = Scaling factor (C, from Maignan 2009 RSE Table 1)                         
+!                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! bidirectional reflectance 
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!    real*8,           intent(out)           :: BR_Q(nobs, nch)                ! Stokes parameter Q
+!    real*8,           intent(out)           :: BR_U(nobs, nch)                ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_Lambert_BPDF (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
+!                                   albedo, BPDFparam, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   BR, Q, U, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_LAMBERT_BPDF
+!
+!
+!subroutine SCALAR_LAMBERT(km, nch, nobs, channels, nstreams, plane_parallel, nMom, nPol, &
+!                     ROT, depol, tau, ssa, g, pmom, pe, he, te, albedo, &
+!                     solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, rc)
+!
+!    use VLIDORT_LAMBERT, only: VLIDORT_Scalar_Lambert  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo  
+!    real*8, target,   intent(in)            :: g(km,nch,nobs)   ! asymmetry factor  
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8, target,   intent(in)            :: albedo(nobs,nch)       ! surface albedo
+!                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!
+!
+!    call VLIDORT_Scalar_Lambert (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, g, pmom, pe, he, te, &
+!                                   albedo, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   rc )  
+!
+!
+!end subroutine SCALAR_LAMBERT
+!
+!subroutine VECTOR_GissCX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+!                     nPol, ROT, depol, tau, ssa, pmom, pe, he, te, U10m, V10m, &
+!                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
+!                     BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_GissCX  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
+!    real*8,           intent(in)            :: V10m(nobs)    
+!    real*8,           intent(in)            :: mr(nch)       ! refractive index
+!                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_GissCX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
+!                                   U10m, V10m, mr, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   Q, U, BR, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_GissCX
+!
+!subroutine VECTOR_CX_CLOUD(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+!                     nPol, ROT, depol, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+!                     pe, he, te, U10m, V10m, &
+!                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
+!                     BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_CX_Cloud
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!  !                                                   ! --- ice cloud Optical Properties ---
+!    real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud  optical depth
+!    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! ice cloud single scattering albedo
+!    real*8,           intent(in)            :: pmomI(km,nch,nobs,nMom,nPol) !ice cloud components of the scat phase matrix
+!
+!  !                                                   ! --- liquid cloud Optical Properties ---
+!    real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud  optical depth
+!    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! liquid cloud single scattering albedo
+!    real*8,           intent(in)            :: pmomL(km,nch,nobs,nMom,nPol) !liquid cloud components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
+!    real*8,           intent(in)            :: V10m(nobs)
+!    real*8,           intent(in)            :: mr(nch)       ! refractive index
+!
+!    real*8,           intent(in)            :: solar_zenith(nobs)
+!    real*8,           intent(in)            :: relat_azymuth(nobs)
+!    real*8,           intent(in)            :: sensor_zenith(nobs)
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U
+!
+!    call VLIDORT_Vector_CX_Cloud (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+!                                   pe, he, te, &
+!                                   U10m, V10m, mr, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   Q, U, BR, BR_Q, BR_U, rc )
+!
+!
+!end subroutine VECTOR_CX_CLOUD
+!
+!subroutine VECTOR_CX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+!                     nPol, ROT, depol, tau, ssa, pmom, pe, he, te, U10m, V10m, &
+!                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
+!                     BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_CX  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
+!    real*8,           intent(in)            :: V10m(nobs)    
+!    real*8,           intent(in)            :: mr(nch)       ! refractive index
+!                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_CX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
+!                                   U10m, V10m, mr, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   Q, U, BR, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_CX
+!
+!subroutine VECTOR_OCICX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+!                     nPol, ROT, depol, tau, ssa, pmom, pe, he, te, U10m, V10m, &
+!                     mr, solar_zenith, relat_azymuth, sensor_zenith, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
+!                     BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_OCICX  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
+!    real*8,           intent(in)            :: V10m(nobs)    
+!    real*8,           intent(in)            :: mr(nch)       ! refractive index
+!                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_OCICX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, tau, ssa, pmom, pe, he, te, &
+!                                   U10m, V10m, mr, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   Q, U, BR, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_OCICX
+!
+!subroutine VECTOR_OCIGissCX(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+!                     nPol, ROT, depol, alpha, tau, ssa, pmom, pe, he, te, U10m, V10m, &
+!                     mr, solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
+!                     BR, Q, U, BR_Q, BR_U, rc)
+!
+!    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_OCIGissCX  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!
+!!                                                   ! --- Trace Gas Absorption---
+!  real*8, target,   intent(in)              :: alpha(km,nobs,nch) ! trace gas absoprtion optical thickness
+!
+!!                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
+!    real*8,           intent(in)            :: V10m(nobs)    
+!    real*8,           intent(in)            :: mr(nch)       ! refractive index
+!                         
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!
+!
+!    call VLIDORT_Vector_OCIGissCX (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, alpha, tau, ssa, pmom, pe, he, te, &
+!                                   U10m, V10m, mr, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   flux_factor, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   Q, U, BR, BR_Q, BR_U, rc )  
+!
+!
+!end subroutine VECTOR_OCIGissCX
+!
+!subroutine VECTOR_OCIGissCX_NOBM_Cloud(km, nch, nobs, channels, nstreams, plane_parallel, nMom,  &
+!                     nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+!                     pe, he, te, U10m, V10m, &
+!                     mr, sleave, sleave_iso, sleave_adjust, &
+!                     solar_zenith, relat_azymuth, sensor_zenith, flux_factor, &
+!                     MISSING,verbose, radiance_VL_SURF,reflectance_VL_SURF, &
+!                     BR, Q, U, BR_Q, BR_U, rc, ADJUSTED_SLEAVE)
+!
+!    use VLIDORT_BRDF_CX, only: VLIDORT_Vector_OCIGissCX_NOBM_CLOUD  
+!    implicit None
+!
+!  ! !INPUT PARAMETERS:
+!
+!    integer,          intent(in)            :: km    ! number of vertical levels 
+!    integer,          intent(in)            :: nch   ! number of channels
+!    integer,          intent(in)            :: nobs  ! number of observations
+!
+!    logical,          intent(in)            :: plane_parallel ! do plane parallel flag
+!
+!    integer,          intent(in)            :: nMom  ! number of phase function moments 
+!    integer,          intent(in)            :: nPol  ! number of scattering matrix components                               
+!    integer,          intent(in)            :: nstreams  ! number of half space streams
+!                    
+!    real*8,           intent(in)            :: channels(nch)    ! wavelengths [nm]
+!
+!!                                                   ! --- Rayleigh Parameters ---
+!    real*8,           intent(in)            :: ROT(km,nobs,nch) ! rayleigh optical thickness
+!    real*8,           intent(in)            :: depol(nch)       ! rayleigh depolarization ratio
+!!                                                   ! Trace Gas Properties ---
+!    real*8,           intent(in)            :: alpha(km,nobs,nch) ! trace gas absorption optical thickenss
+!  !                                                   ! --- Aerosol Optical Properties ---
+!    real*8,           intent(in)            :: tau(km,nch,nobs) ! aerosol optical depth
+!    real*8,           intent(in)            :: ssa(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmom(km,nch,nobs,nMom,nPol) !components of the scat phase matrix
+!
+!    real*8,           intent(in)            :: tauI(km,nch,nobs) ! ice cloud optical depth
+!    real*8,           intent(in)            :: ssaI(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmomI(km,nch,nobs,nMom,nPol) !components of the scat phase matrix    
+!
+!    real*8,           intent(in)            :: tauL(km,nch,nobs) ! liquid cloud optical depth
+!    real*8,           intent(in)            :: ssaL(km,nch,nobs) ! single scattering albedo    
+!    real*8,           intent(in)            :: pmomL(km,nch,nobs,nMom,nPol) !components of the scat phase matrix    
+!
+!
+!    real*8,           intent(in)            :: MISSING          ! MISSING VALUE
+!    real*8,           intent(in)            :: pe(km+1,nobs)    ! pressure at layer edges [Pa]
+!    real*8,           intent(in)            :: he(km+1,nobs)    ! height above sea-level  [m]
+!    real*8,           intent(in)            :: te(km+1,nobs)    ! temperature at layer edges [K]
+!
+!    real*8,           intent(in)            :: U10m(nobs)   ! Wind speed components [m/s]
+!    real*8,           intent(in)            :: V10m(nobs)    
+!    real*8,           intent(in)            :: mr(nch)       ! refractive index
+!    real*8,           intent(in)            :: sleave(nch,nobs)       ! sun normalized water leaving radiance from NOBM
+!                                                          ! described and used in Gregg & Rousseaux 2017
+!    logical,          intent(in)            :: sleave_iso
+!    logical,          intent(in)            :: sleave_adjust 
+!    real*8,           intent(in)            :: solar_zenith(nobs)  
+!    real*8,           intent(in)            :: relat_azymuth(nobs) 
+!    real*8,           intent(in)            :: sensor_zenith(nobs) 
+!
+!    real*8,           intent(in)            :: flux_factor(nch,nobs) ! solar flux (F0)
+!
+!    integer,          intent(in)            :: verbose
+!
+!  ! !OUTPUT PARAMETERS:
+!    real*8,           intent(out)           :: radiance_VL_SURF(nobs,nch)     ! TOA normalized radiance from VLIDORT using surface module
+!    real*8,           intent(out)           :: reflectance_VL_SURF(nobs, nch) ! TOA reflectance from VLIDORT using surface module
+!    integer,          intent(out)           :: rc                             ! return code
+!
+!    real*8,           intent(out)           :: BR(nobs,nch)                   ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_Q(nobs,nch)                 ! polarized bidirectional reflectance
+!    real*8,           intent(out)           :: BR_U(nobs,nch)                 ! polarized bidirectional reflectance    
+!    real*8,           intent(out)           :: Q(nobs, nch)                   ! Stokes parameter Q
+!    real*8,           intent(out)           :: U(nobs, nch)                   ! Stokes parameter U   
+!    real*8,           intent(out)           :: ADJUSTED_SLEAVE(nobs,nch)
+!
+!    call VLIDORT_Vector_OCIGissCX_NOBM_CLOUD (km, nch, nobs, channels, nstreams, plane_parallel, nMom, &
+!                                   nPol, ROT, depol, alpha, tau, ssa, pmom, tauI, ssaI, pmomI, tauL, ssaL, pmomL, &
+!                                   pe, he, te, U10m, V10m, &
+!                                   mr, sleave, sleave_iso, sleave_adjust, &
+!                                   solar_zenith, &
+!                                   relat_azymuth, &
+!                                   sensor_zenith, &
+!                                   flux_factor, &
+!                                   MISSING,verbose, &
+!                                   radiance_VL_SURF, &
+!                                   reflectance_VL_SURF, &
+!                                   Q, U, BR, BR_Q, BR_U, rc, ADJUSTED_SLEAVE )  
+!
+!
+!end subroutine VECTOR_OCIGissCX_NOBM_Cloud

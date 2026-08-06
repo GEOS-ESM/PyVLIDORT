@@ -3,11 +3,8 @@ esma_set_this()
 
 # these are executable scripts
 set (PYSCRIPTS
-    sbg_vlidort_pyexample.py
-    )
-
-set (SCRIPTS
-    setup_env
+    sbg_vlidort_setup.py
+    sbg_vlidort.py
     )
 
 install (
@@ -16,15 +13,40 @@ install (
     )
 
 # these are non-executaables
-#set (RCFILES
-#    sbg.pcf
-#    ssd650.pcf
-#    imager_files.pcf
-#    imager_sampler.pcf
-#    )
+set (FILES
+    sbg_vlidort.yaml
+    sbg.yaml
+    ssd650.yaml
+    sbg_files.yaml
+    m2_aop.yaml
+    sbg_vlidort_run.j
+    )
 
-#install (
-#    FILES ${RCFILES}
-#    DESTINATION bin/missions/${this}
-#    )
+install (
+    FILES ${FILES}
+    DESTINATION bin/missions/${this}
+    )
+
+# these are executable scripts
+set (PYSCRIPTS
+    benchmarking/sbg_vlidort_pyexample.py
+    )
+
+install (
+    PROGRAMS  ${PYSCRIPTS} ${SCRIPTS}
+    DESTINATION bin/missions/${this}/benchmarking
+    )
+
+# these are non-executaables
+set (FILES
+    benchmarking/sbg_vlidort_run.j
+    benchmarking/sbg_files.yaml
+    benchmarking/m2_aop.yaml
+    benchmarking/writers.py
+    )
+
+install (
+    FILES ${FILES}
+    DESTINATION bin/missions/${this}/benchmarking
+    )
 

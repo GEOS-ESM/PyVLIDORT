@@ -5,4 +5,4 @@ else()
   message(FATAL_ERROR "VLIDORT library ${VLIDORT_LIBRARY} does not exist")
 endif()
 
-esma_add_subdirectories (2STREAM LIDORT3p7 ${VLIDORT_LIBRARY})
+esma_add_subdirectories (LIDORT3p7 ${VLIDORT_LIBRARY} TWOSTREAM2p4)

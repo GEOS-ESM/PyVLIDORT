@@ -3367,7 +3367,7 @@
 !  Check dimensioning on Legendre numbers (refractive geometry only)
 
       IF ( DO_REFRACTIVE_GEOMETRY ) THEN
-        NALLSTREAMS = N_SZANGLES*NLAYERS + NSTREAMS + N_USER_VZANGLES
+        NALLSTREAMS = N_SZANGLES + NSTREAMS + N_USER_VZANGLES
         IF ( NALLSTREAMS .GT. MAX_ALLSTRMS_P1 ) THEN
           NM = NM + 1
           MESSAGES(NM) = 'Dimensioning error for refractive beam angles'

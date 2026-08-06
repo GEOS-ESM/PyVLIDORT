@@ -17,4 +17,5 @@
     outDir       : "/discover/nobackup/projects/gmao/osse2/pub/c1440_NR/OBS/SBG/%ORBITNAME/PCA/Y%year/M%month/D%day"
     outFile      : "%orbitname-%instname-g5nr.lc.vlidort.%nymd_%hour%minutez.nc4"
 
+    DT_MINS      : 1
 # FILENAMES

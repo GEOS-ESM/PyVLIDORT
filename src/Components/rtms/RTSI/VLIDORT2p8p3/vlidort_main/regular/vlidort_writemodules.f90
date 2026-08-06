@@ -1451,9 +1451,9 @@
                 !WRITE(RUN,*)
                 !WRITE(RUN,*) 'FOURIER = ',FOURIER,' IBEAM = ',IBEAM,' W = ',W,' UT = ',UT,' I = ',I,' O = ',O
                 !WRITE(RUN,*) 'STOKES_F(UT,I,IBEAM,O,W) = ',STOKES_F(UT,I,IBEAM,O,W)
-                WRITE(*,*)
-                WRITE(*,*) 'FOURIER = ',FOURIER,' W = ',W,' IB = ',IB,' UT = ',UT,' I = ',I,' O = ',O
-                WRITE(*,*) 'STOKES_F(UT,I,IB,O,W) = ',STOKES_F(UT,I,IB,O,W)
+                WRITE(RUN,*)
+                WRITE(RUN,*) 'FOURIER = ',FOURIER,' W = ',W,' IB = ',IB,' UT = ',UT,' I = ',I,' O = ',O
+                WRITE(RUN,*) 'STOKES_F(UT,I,IB,O,W) = ',STOKES_F(UT,I,IB,O,W)
               ENDDO
             ENDDO
           ENDDO

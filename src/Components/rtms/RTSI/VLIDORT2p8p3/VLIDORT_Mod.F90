@@ -46,7 +46,8 @@
 	      TYPE VLIDORT
 		logical     :: initialized = .false.  
         integer     :: NGREEK_MOMENTS_INPUT = 300    ! Number of scattering matrix expansion coefficients
-        integer     :: NSTREAMS = 6        ! Number of half-space streams
+        integer     :: Max_InAngles = 371  ! Maximum Number of F-matrix angles
+        integer     :: NSTREAMS = 8        ! Number of half-space streams
 		integer     :: NBEAMS = 1          ! Number of solar zenith angles
 		integer     :: N_USER_STREAMS = 1  ! Number of Viewing zenith angles
 		integer     :: N_USER_RELAZMS = 1  ! Number of relative azimuth angles
@@ -54,6 +55,8 @@
 		integer     :: N_USER_OBSGEOMS = 1 ! Number of azimuth angles calculated by surface supplement
 		logical     :: DO_PLANE_PARALLEL = .false.
         logical     :: DO_DEBUG_INPUT = .false. ! flag to write out debug files containing all VLIDORT inputs
+        logical     :: USEFMAT = .true.    !flat to use direct F-matrix inputs
+        logical     :: DO_FULLRAD_MODE = .true.  ! Do full Stokes vector calculation?  If false, returns single scatter 
 		type(VLIDORT_IO) :: VIO
 
 	      END TYPE VLIDORT
@@ -86,11 +89,13 @@
       logical                                :: DO_FULLRAD_MODE
       logical                                :: DO_FOCORR_NADIR
       logical                                :: DO_FOCORR_OUTGOING
+      logical                                :: DO_MSSTS
       logical                                :: DO_SSCORR_TRUNCATION
       logical                                :: DO_FOCORR
       logical                                :: DO_FOCORR_EXTERNAL
       logical                                :: DO_SSCORR_USEFMAT 
       logical                                :: DO_DOUBLE_CONVTEST
+      logical                                :: DO_FOURIER0_NSTOKES2
       logical                                :: DO_SOLAR_SOURCES
       logical                                :: DO_PLANE_PARALLEL
       logical                                :: DO_OBSERVATION_GEOMETRY
@@ -128,6 +133,7 @@
       integer                                :: N_SZANGLES
       real*8, dimension( MAX_SZANGLES )      :: SZANGLES 
       real*8                                 :: EARTH_RADIUS
+      real*8                                 :: FINEGRID
       real*8                                 :: RFINDEX_PARAMETER
       real*8                                 :: GEOMETRY_SPECHEIGHT
       integer                                :: N_USER_OBSGEOMS
@@ -167,28 +173,51 @@
 !                         Modes of Operation
 !                         ------------------
 
-      DO_FULLRAD_MODE    = .true.  ! Do full Stokes vector calculation?  If false, and DO_FOCORR is true, returns single scatter
-      DO_FOCORR_NADIR    = .false. ! Do nadir single scatter correction?
-      DO_FOCORR_OUTGOING = .true.  ! Do outgoing single scatter correction?
+      DO_FULLRAD_MODE    = self%DO_FULLRAD_MODE  ! Do full Stokes vector calculation?  If false, and DO_FOCORR is true, returns single scatter
+      DO_FOCORR_NADIR    = .false. ! Do nadir single scatter correction? only the incoming solar beam is treated in spherical geometry
+      if (self%DO_PLANE_PARALLEL) then
+          ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
+          ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
+          DO_FOCORR_OUTGOING = .false.
+          ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation 
+          DO_MSSTS           = .false.  
+      else
+          ! Do outgoing single scatter correction? both the incoming solar beam and outgoing line-of-sight paths are treated spherically
+          ! DO_FOCORR_NADIR and DO_FOCORR_OUTGOING are mutually exclusive, only one can be true.
+          DO_FOCORR_OUTGOING = .true.
+          ! Generate multiple-scatter source term needed for application of sphericity corrections to multiple scatter radiation
+          ! disabling this for now.  more development needs to be done in driver scripts to get this working
+          DO_MSSTS           = .false.
+      end if
       DO_FOCORR          = .true.  ! Do First-Order correction?  Must be set tu use exact single scatter instead of the truncated phase function
       DO_FOCORR_EXTERNAL = .false. ! Use First-Order results computed externally
-      DO_SSCORR_USEFMAT  = .false. ! Use direct F-matrix inputs
+      DO_SSCORR_USEFMAT  = self%USEFMAT ! Use direct F-matrix inputs
 !      DO_DBCORRECTION    = .true.  ! Do direct beam correction?
       DO_DOUBLE_CONVTEST = .true.  ! Perform double convergence test?
-       
+      DO_FOURIER0_NSTOKES2 = .true. ! Performance enhancement. For Fourier m= 0 uses NTOKES = 2. 
 !                            Solar Sources
 !                            -------------
 
       DO_SOLAR_SOURCES    = .true.     ! Include solar sources?
       DO_PLANE_PARALLEL   = self%DO_PLANE_PARALLEL    ! Plane-parallel treatment of direct beam?
       DO_CHAPMAN_FUNCTION = .true.     ! Perform internal Chapman function calculation?
-      DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere?
+      if (self%DO_PLANE_PARALLEL) then
+          DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere?
+      else
+          DO_REFRACTIVE_GEOMETRY = .false. ! Beam path with refractive atmosphere? 
+                                           ! disabling this for now.  Rob indicates that this is not implemented
+                                           ! correctly for DO_FOCORR_OUTGOING at the moment
+      end if
      
 !                         Performance Control
 !                         -------------------
 
       DO_RAYLEIGH_ONLY     = .false. ! Rayleigh atmosphere only?
-      DO_DELTAM_SCALING    = .true.  ! Include Delta-M scaling?
+      if (DO_FULLRAD_MODE) then
+          DO_DELTAM_SCALING    = .true.  ! Include Delta-M scaling?
+      else
+          DO_DELTAM_SCALING    = .false. ! turn off if doing SS only
+      end if
       DO_SSCORR_TRUNCATION = .false. ! Additional Delta-M scaling for SS correction? SHOULD ALWAYS BE FALSE
       DO_SOLUTION_SAVING   = .false. ! Solution saving mode?
       DO_BVP_TELESCOPING   = .false. ! Boundary value problem telescoping mode?
@@ -214,14 +243,14 @@
       DO_WRITE_FOURIER  = .false. ! Fourier component output write?
       DO_WRITE_RESULTS  = .false. ! Results write?
       
-      INPUT_WRITE_FILENAME    = '/dev/null' ! filename for input write
-      SCENARIO_WRITE_FILENAME = '/dev/null' ! filename for scenario write
-      FOURIER_WRITE_FILENAME  = '/dev/null' ! Fourier output filename
-      RESULTS_WRITE_FILENAME  = '/dev/null' ! filename for main output
+      INPUT_WRITE_FILENAME    = 'input.dat' !'/dev/null' ! filename for input write
+      SCENARIO_WRITE_FILENAME = 'scen.dat'  !'/dev/null' ! filename for scenario write
+      FOURIER_WRITE_FILENAME  = 'four.dat'  !'/dev/null' ! Fourier output filename
+      RESULTS_WRITE_FILENAME  = 'results.dat' !'/dev/null' ! filename for main output
 
       NSTREAMS = self%NSTREAMS         ! Number of half-space streams
       NLAYERS = km                    ! Number of atmospheric layers
-      NFINELAYERS = 3                 ! Number of fine layers (outgoing sphericity correction)
+      NFINELAYERS = 4                 ! Number of fine layers (outgoing sphericity correction)
       NGREEK_MOMENTS_INPUT = self%NGREEK_MOMENTS_INPUT     ! Number of scattering matrix expansion coefficients
       TAYLOR_ORDER = 3                ! Number of small-number terms in Taylor series expansions
       N_USER_OBSGEOMS = self%N_USER_OBSGEOMS             ! Number of observation Geometry inputs 
@@ -237,6 +266,9 @@
 !                        -----------------------
 
       EARTH_RADIUS = 6371.0 ! Earth radius (km)
+      FINEGRID          = 10.0     ! number of fine layer divisions to be used in Snell’s Law bending 
+                                   ! in the Chapman factor calculation with refraction. 
+                                   ! Recommended to set FINEGRID(N)=10. Refraction only.
       RFINDEX_PARAMETER = 0.000288 ! Refractive index parameter
       GEOMETRY_SPECHEIGHT = 0.0 ! Input geometry specification height [km]
 
@@ -246,6 +278,7 @@
 
       DO_THERMAL_EMISSION  = .false.  ! Do thermal emission?
       SURFBB               = 0.0      ! surface black body emissionnn
+      THERMAL_BB_INPUT     = 0.0      ! Atmospheric thermal blackbody functions, levels n
 
       DO_THERMAL_TRANSONLY = .false.  ! Do thermal emission, transmittance only?
       N_THERMAL_COEFFS     = 2        ! Number of thermal coefficients
@@ -268,8 +301,8 @@
       self%VIO%VLIDORT_FixIn%Bool%TS_DO_UPWELLING           = DO_UPWELLING
       self%VIO%VLIDORT_FixIn%Bool%TS_DO_DNWELLING           = DO_DNWELLING
       !self%VIO%VLIDORT_FixIn%Bool%TS_DO_LAMBERTIAN_SURFACE = DO_LAMBERTIAN_SURFACE
-
-
+      self%VIO%VLIDORT_FixIn%Bool%TS_DO_MSSTS               = DO_MSSTS
+      self%VIO%VLIDORT_FixIn%Bool%TS_DO_FOURIER0_NSTOKES2   = DO_FOURIER0_NSTOKES2
 !  Modified Boolean inputs
 
       self%VIO%VLIDORT_ModIn%MBool%TS_DO_FOCORR_NADIR        = DO_FOCORR_NADIR
@@ -306,7 +339,7 @@
       self%VIO%VLIDORT_FixIn%Cont%TS_TF_MAXITER             = TF_MAXITER
       self%VIO%VLIDORT_FixIn%Cont%TS_TF_CRITERION           = TF_CRITERION
       ! this has to be initialized here
-      self%VIO%VLIDORT_FixIn%Cont%TS_ASYMTX_TOLERANCE       = 1.0d-12
+      self%VIO%VLIDORT_FixIn%Cont%TS_ASYMTX_TOLERANCE       = 1.0d-20
 !  Modified control inputs
 
       self%VIO%VLIDORT_ModIn%Mcont%TS_NGREEK_MOMENTS_INPUT   = NGREEK_MOMENTS_INPUT
@@ -330,7 +363,7 @@
       !VLIDORT_Chapman_inputs%TS_HEIGHT_GRID                     = HEIGHT_GRID
       !VLIDORT_Chapman_inputs%TS_PRESSURE_GRID                   = PRESSURE_GRID
       !VLIDORT_Chapman_inputs%TS_TEMPERATURE_GRID                = TEMPERATURE_GRID
-      !VLIDORT_Chapman_inputs%TS_FINEGRID                        = FINEGRID
+      self%VIO%VLIDORT_FixIn%Chapman%TS_FINEGRID                 = FINEGRID
       self%VIO%VLIDORT_ModIn%MChapman%TS_EARTH_RADIUS            = EARTH_RADIUS
       self%VIO%VLIDORT_FixIn%Chapman%TS_RFINDEX_PARAMETER       = RFINDEX_PARAMETER
 

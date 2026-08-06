@@ -1,3 +1,13 @@
 paths_yaml: sbg_files.yaml
 inst_yaml: sbg.yaml
 orbit_yaml: ssd650.yaml
+
+NSTOKES: 3
+DO_SPHERICITY: False
+DO_FULLRAD: True    # FULLRAD means MS+SS, False means do SS only
+ALBEDOTYPES:
+    - AMES_BRDF
+MTFILE: 'm2_aop.yaml'
+WRITE_INPUTS: True
+DO_RTCALC: True  # do the RT calculation, if false just gets optical properties
+DO_INPUTSCALC: True    # do optical property calcuation, if false reads from a precomputed file
